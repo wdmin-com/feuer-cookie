@@ -201,6 +201,8 @@ class Feuer_Cookie_Plugin {
 		add_action('wp_dashboard_setup', array($this, 'register_dashboard_widget'));
 		add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
 		add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
+		// Must run before a GTM container that is printed through wp_head.
+		add_action('wp_head', array($this, 'render_gtm_consent_defaults'), 0);
 		add_action('template_redirect', array($this, 'maybe_reset_demo_mode_storage'), -1);
 		add_action('template_redirect', array($this, 'handle_frontend_gate'), 0);
 		add_action('wp_footer', array($this, 'render_consent_banner'), 1);
@@ -666,7 +668,56 @@ class Feuer_Cookie_Plugin {
 			'consentRecord'   => $consent_record,
 			'demoMode'        => $this->is_demo_mode_active(),
 			'statisticsEnabled' => $this->has_vendor_consent('feuer_cookie_statistics'),
+			'gtmConsentMode'  => ! empty($settings['gtm_consent_mode']),
+			'gtmConsent'      => $this->get_gtm_consent_payload(),
 			'localStorageKey' => 'feuer-cookie:' . $this->get_cookie_name('consent') . ':record',
+		);
+	}
+
+	/**
+	 * Print the Consent Mode v2 default state before Google Tag Manager executes.
+	 *
+	 * The dataLayer call itself stores no cookie. All non-essential Google storage
+	 * remains denied until a visitor has actively opted in to Google Analytics/GTM.
+	 *
+	 * @return void
+	 */
+	public function render_gtm_consent_defaults() {
+		if (! $this->should_handle_frontend_request() || $this->is_robot_request()) {
+			return;
+		}
+
+		if (empty($this->get_settings()['gtm_consent_mode'])) {
+			return;
+		}
+
+		$payload = wp_json_encode($this->get_gtm_consent_payload());
+
+		if (! $payload) {
+			return;
+		}
+
+		echo '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("consent","default",' . $payload . ');</script>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Convert the saved granular selection into a GTM Consent Mode v2 payload.
+	 *
+	 * @return array<string,string|int>
+	 */
+	private function get_gtm_consent_payload() {
+		$google_allowed = 'configured' === $this->get_consent_state()
+			&& $this->has_vendor_consent('google_analytics');
+
+		return array(
+			'ad_storage'              => $google_allowed ? 'granted' : 'denied',
+			'ad_user_data'            => $google_allowed ? 'granted' : 'denied',
+			'ad_personalization'      => $google_allowed ? 'granted' : 'denied',
+			'analytics_storage'       => $google_allowed ? 'granted' : 'denied',
+			'functionality_storage'   => 'denied',
+			'personalization_storage' => 'denied',
+			'security_storage'        => 'denied',
+			'wait_for_update'         => 500,
 		);
 	}
 
@@ -820,6 +871,7 @@ class Feuer_Cookie_Plugin {
 				$settings['panel_button_shape']  = $this->sanitize_panel_button_shape(wp_unslash($_POST['panel_button_shape'] ?? 'circle'));
 				$settings['panel_button_color']  = $this->sanitize_panel_button_color(wp_unslash($_POST['panel_button_color'] ?? 'ocean'));
 				$settings['panel_button_icon']   = $this->sanitize_panel_button_icon(wp_unslash($_POST['panel_button_icon'] ?? 'cookie'));
+				$settings['panel_button_position'] = $this->sanitize_panel_button_position(wp_unslash($_POST['panel_button_position'] ?? 'bottom-right'));
 				$settings['service_allow_label'] = sanitize_text_field(wp_unslash($_POST['service_allow_label'] ?? ''));
 				$settings['delete_label']        = sanitize_text_field(wp_unslash($_POST['delete_label'] ?? ''));
 				break;
@@ -833,6 +885,7 @@ class Feuer_Cookie_Plugin {
 				$settings['consent_cookie_days'] = max(1, min(3650, (int) ($_POST['consent_cookie_days'] ?? 365)));
 				$settings['overlay_opacity']    = $this->sanitize_overlay_opacity($_POST['overlay_opacity'] ?? 40);
 				$settings['blocking_mode']      = $this->sanitize_blocking_mode(wp_unslash($_POST['blocking_mode'] ?? 'strict'));
+				$settings['gtm_consent_mode']   = ! empty($_POST['gtm_consent_mode']) ? 1 : 0;
 				$settings['store_full_ip']      = ! empty($_POST['store_full_ip']) ? 1 : 0;
 				$settings['admin_bypass']       = ! empty($_POST['admin_bypass']) ? 1 : 0;
 				break;
@@ -1279,6 +1332,7 @@ class Feuer_Cookie_Plugin {
 		$button_shape  = $this->sanitize_panel_button_shape((string) ($settings['panel_button_shape'] ?? 'circle'));
 		$button_color  = $this->sanitize_panel_button_color((string) ($settings['panel_button_color'] ?? 'ocean'));
 		$button_icon   = $this->sanitize_panel_button_icon((string) ($settings['panel_button_icon'] ?? 'cookie'));
+		$button_position = $this->sanitize_panel_button_position((string) ($settings['panel_button_position'] ?? 'bottom-right'));
 		$panel_id      = function_exists('wp_unique_id') ? wp_unique_id('feuer-cookie-reopen-panel-') : 'feuer-cookie-reopen-panel';
 
 		if (! $this->should_handle_frontend_request() || $this->is_admin_bypass_active()) {
@@ -1295,7 +1349,7 @@ class Feuer_Cookie_Plugin {
 
 		ob_start();
 		?>
-		<div class="feuer-cookie-reopen" data-feuer-cookie-panel data-feuer-cookie-panel-shape="<?php echo esc_attr($button_shape); ?>" data-feuer-cookie-panel-color="<?php echo esc_attr($button_color); ?>" data-feuer-cookie-panel-icon="<?php echo esc_attr($button_icon); ?>">
+		<div class="feuer-cookie-reopen feuer-cookie-reopen--<?php echo esc_attr($button_position); ?>" data-feuer-cookie-panel data-feuer-cookie-panel-shape="<?php echo esc_attr($button_shape); ?>" data-feuer-cookie-panel-color="<?php echo esc_attr($button_color); ?>" data-feuer-cookie-panel-icon="<?php echo esc_attr($button_icon); ?>">
 			<button
 				type="button"
 				class="feuer-cookie-reopen__button feuer-cookie-reopen__button--<?php echo esc_attr($button_shape); ?> btn btn-primary btn-sm"
@@ -1523,6 +1577,7 @@ class Feuer_Cookie_Plugin {
 					'status'             => 'unknown',
 					'preferences'        => $this->get_default_preferences(),
 					'consentRecord'      => array(),
+					'gtmConsent'         => $this->get_gtm_consent_payload(),
 					'clearClientStorage' => true,
 				)
 			);
@@ -1565,6 +1620,7 @@ class Feuer_Cookie_Plugin {
 					'status'             => 'demo',
 					'preferences'        => $preferences,
 					'consentRecord'      => array(),
+					'gtmConsent'         => $this->get_gtm_consent_payload(),
 					'demoMode'           => true,
 					'clearClientStorage' => true,
 				)
@@ -1584,6 +1640,7 @@ class Feuer_Cookie_Plugin {
 				'status'        => 'configured',
 				'preferences'   => $preferences,
 				'consentRecord' => $record,
+				'gtmConsent'    => $this->get_gtm_consent_payload(),
 			)
 		);
 	}
@@ -1608,6 +1665,11 @@ class Feuer_Cookie_Plugin {
 		$duration        = max(1, min(43200, (int) ($_POST['duration'] ?? 0)));
 		$active_duration = max(0, min($duration, (int) ($_POST['active_duration'] ?? 0)));
 		$scroll_depth    = max(0, min(100, (int) ($_POST['scroll_depth'] ?? 0)));
+		$screen_width    = max(0, min(10000, (int) ($_POST['screen_width'] ?? 0)));
+		$screen_height   = max(0, min(10000, (int) ($_POST['screen_height'] ?? 0)));
+		$viewport_width  = max(0, min(10000, (int) ($_POST['viewport_width'] ?? 0)));
+		$viewport_height = max(0, min(10000, (int) ($_POST['viewport_height'] ?? 0)));
+		$pixel_ratio     = max(1, min(8, (float) ($_POST['pixel_ratio'] ?? 1)));
 		$reason          = sanitize_key(wp_unslash($_POST['reason'] ?? 'pagehide'));
 
 		$this->ensure_session_token();
@@ -1618,6 +1680,11 @@ class Feuer_Cookie_Plugin {
 				'duration_seconds' => $duration,
 				'active_seconds'   => $active_duration,
 				'scroll_depth'     => $scroll_depth,
+				'screen_width'     => $screen_width,
+				'screen_height'    => $screen_height,
+				'viewport_width'   => $viewport_width,
+				'viewport_height'  => $viewport_height,
+				'pixel_ratio'      => $pixel_ratio,
 				'reason'           => $reason,
 				'captured_at'      => current_time('mysql'),
 			),
@@ -2059,6 +2126,7 @@ class Feuer_Cookie_Plugin {
 			'panel_button_shape'  => 'circle',
 			'panel_button_color'  => 'ocean',
 			'panel_button_icon'   => 'cookie',
+			'panel_button_position' => 'bottom-right',
 			'service_allow_label' => 'Diesen Dienst erlauben',
 			'delete_label'        => 'Einwilligung loeschen',
 			'privacy_url'         => home_url('/datenschutz/'),
@@ -2071,6 +2139,7 @@ class Feuer_Cookie_Plugin {
 			'consent_cookie_days' => 365,
 			'overlay_opacity'     => 40,
 			'blocking_mode'       => 'strict',
+			'gtm_consent_mode'    => 1,
 			'store_full_ip'       => 0,
 			'admin_bypass'        => 1,
 			'show_reopen_button'  => 1,
@@ -2093,6 +2162,9 @@ class Feuer_Cookie_Plugin {
 			'bottom-bar'           => 'Untere Leiste',
 			'bottom-left-compact'  => 'Kompakt unten links',
 			'bottom-right-compact' => 'Kompakt unten rechts',
+			'side-left'            => 'Seitlich links',
+			'side-right'           => 'Seitlich rechts',
+			'center-compact'       => 'Kompakt zentriert',
 		);
 	}
 
@@ -2105,6 +2177,8 @@ class Feuer_Cookie_Plugin {
 		return array(
 			'circle' => 'Rund',
 			'cookie' => 'Keksform',
+			'diamond' => 'Diamant',
+			'soft-square' => 'Weiches Quadrat',
 			'square' => 'Quadratisch',
 			'pill'   => 'Pill',
 		);
@@ -2122,6 +2196,7 @@ class Feuer_Cookie_Plugin {
 			'forest'   => 'Gruen',
 			'berry'    => 'Beere',
 			'graphite' => 'Graphit',
+			'violet'   => 'Violett',
 		);
 	}
 
@@ -2137,6 +2212,20 @@ class Feuer_Cookie_Plugin {
 			'gear'   => 'Zahnrad',
 			'lock'   => 'Schloss',
 			'chart'  => 'Chart',
+		);
+	}
+
+	/**
+	 * Available positions for the floating privacy control.
+	 *
+	 * @return array<string,string>
+	 */
+	private function get_panel_button_position_options() {
+		return array(
+			'bottom-right' => 'Unten rechts',
+			'bottom-left'  => 'Unten links',
+			'middle-right' => 'Mittig rechts',
+			'middle-left'  => 'Mittig links',
 		);
 	}
 
@@ -2174,6 +2263,18 @@ class Feuer_Cookie_Plugin {
 		$options = array_keys($this->get_panel_button_icon_options());
 
 		return in_array($icon, $options, true) ? $icon : 'cookie';
+	}
+
+	/**
+	 * Sanitize the floating privacy-control position.
+	 *
+	 * @param string $position Position slug.
+	 * @return string
+	 */
+	private function sanitize_panel_button_position($position) {
+		$options = array_keys($this->get_panel_button_position_options());
+
+		return in_array($position, $options, true) ? $position : 'bottom-right';
 	}
 
 	/**
@@ -3544,7 +3645,8 @@ class Feuer_Cookie_Plugin {
 			array(
 				'expires'  => $expires,
 				'path'     => COOKIEPATH ? COOKIEPATH : '/',
-				'secure'   => is_ssl(),
+				// Consent and session cookies must never be sent over an insecure connection.
+				'secure'   => true,
 				'httponly' => true,
 				'samesite' => 'Lax',
 			)
@@ -4044,6 +4146,10 @@ class Feuer_Cookie_Plugin {
 		$top_ips       = $this->get_top_ip_rows(14, 8);
 		$engagement_pages = $this->get_page_engagement_rows(14, 8);
 		$top_locations = $this->get_top_location_rows(14, 8);
+		$top_countries = $this->get_top_country_rows(30, 24);
+		$screen_sizes  = $this->get_screen_dimension_rows(30, 8);
+		$period_summaries = $this->get_traffic_period_summaries();
+		$referrer_sources = $this->get_external_referrer_source_rows(30, 12);
 		$top_devices   = $this->get_top_dimension_rows('device_type', 14, 8);
 		$top_browsers  = $this->get_top_dimension_rows('browser_name', 14, 8);
 		$top_os        = $this->get_top_dimension_rows('os_name', 14, 8);
@@ -4112,6 +4218,16 @@ class Feuer_Cookie_Plugin {
 			<?php $this->render_stat_card('Geblockte Anfragen', (int) ($totals['blocked_requests'] ?? 0), 'Anfragen von gesperrten IPs.'); ?>
 		</div>
 
+		<div class="feuer-cookie-period-grid" aria-label="Besuchszeiträume">
+			<?php foreach ($period_summaries as $period) : ?>
+				<div class="feuer-cookie-period-card">
+					<span><?php echo esc_html((string) $period['label']); ?></span>
+					<strong><?php echo esc_html(number_format_i18n((int) $period['views'])); ?></strong>
+					<small><?php echo esc_html(number_format_i18n((int) $period['visitors'])); ?> Besucher · <?php echo esc_html((string) $period['days']); ?> Tage</small>
+				</div>
+			<?php endforeach; ?>
+		</div>
+
 		<div class="feuer-cookie-panel feuer-cookie-panel--chart feuer-cookie-daily-dashboard">
 			<div class="feuer-cookie-chart__header">
 				<div>
@@ -4165,6 +4281,32 @@ class Feuer_Cookie_Plugin {
 					</div>
 				</div>
 				<?php $this->render_page_bar_chart($top_pages); ?>
+			</div>
+		</div>
+
+		<div class="feuer-cookie-panel feuer-cookie-panel--chart">
+			<div class="feuer-cookie-chart__header">
+				<div>
+					<p class="feuer-cookie-chart__eyebrow">Akquisition</p>
+					<h2>Externe Quellen und Suchmaschinen</h2>
+					<p class="feuer-cookie-chart__subline">Nur externe Verweise der letzten 30 Tage. Suchmaschinen werden separat markiert; direkte und interne Aufrufe sind ausgeschlossen.</p>
+				</div>
+				<div class="feuer-cookie-chart__meta">
+					<?php $this->render_chart_meta_item('Quellen', number_format_i18n(count($referrer_sources))); ?>
+					<?php $this->render_chart_meta_item('Top-Quelle', number_format_i18n((int) ($referrer_sources[0]['hits'] ?? 0)), (string) ($referrer_sources[0]['label'] ?? '-')); ?>
+				</div>
+			</div>
+			<?php $this->render_referrer_source_chart($referrer_sources); ?>
+		</div>
+
+		<div class="feuer-cookie-grid feuer-cookie-grid--two">
+			<div class="feuer-cookie-panel feuer-cookie-panel--chart">
+				<div class="feuer-cookie-chart__header"><div><p class="feuer-cookie-chart__eyebrow">Geo</p><h2>Laender mit Besuchern</h2><p class="feuer-cookie-chart__subline">Farben zeigen die relative Anzahl der Aufrufe in den letzten 30 Tagen.</p></div></div>
+				<?php $this->render_country_coverage($top_countries); ?>
+			</div>
+			<div class="feuer-cookie-panel feuer-cookie-panel--chart">
+				<div class="feuer-cookie-chart__header"><div><p class="feuer-cookie-chart__eyebrow">Displays</p><h2>Bildschirm- und Viewportgroessen</h2><p class="feuer-cookie-chart__subline">Nur aus aktiv freigegebenem Engagement-Tracking, letzte 30 Tage.</p></div></div>
+				<?php $this->render_generic_bar_chart($screen_sizes); ?>
 			</div>
 		</div>
 
@@ -5598,6 +5740,17 @@ class Feuer_Cookie_Plugin {
 						</td>
 					</tr>
 					<tr>
+						<th scope="row"><label for="panel_button_position">Position Cookie-Button</label></th>
+						<td>
+							<select name="panel_button_position" id="panel_button_position">
+								<?php foreach ($this->get_panel_button_position_options() as $position_key => $position_label) : ?>
+									<option value="<?php echo esc_attr($position_key); ?>" <?php selected($settings['panel_button_position'], $position_key); ?>><?php echo esc_html($position_label); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">Wahlweise in einer unteren Ecke oder mittig am linken bzw. rechten Rand.</p>
+						</td>
+					</tr>
+					<tr>
 						<th scope="row"><label for="service_allow_label">Button einzelner Dienst</label></th>
 						<td><input type="text" name="service_allow_label" id="service_allow_label" class="regular-text" value="<?php echo esc_attr($settings['service_allow_label']); ?>"></td>
 					</tr>
@@ -5673,6 +5826,10 @@ class Feuer_Cookie_Plugin {
 							</select>
 							<p class="description">Im strikten Modus werden erkannte externe Skripte, Styles und Iframes bis zur Zustimmung blockiert.</p>
 						</td>
+					</tr>
+					<tr>
+						<th scope="row">Google Tag Manager</th>
+						<td><label><input type="checkbox" name="gtm_consent_mode" value="1" <?php checked(! empty($settings['gtm_consent_mode'])); ?>> GTM Consent Mode v2 aktivieren</label><p class="description">Setzt vor GTM alle optionalen Google-Speicher auf „denied“ und aktualisiert sie erst nach der ausdruecklichen Freigabe von Google Analytics / Tag Manager.</p></td>
 					</tr>
 					<tr>
 						<th scope="row">Volle IP speichern</th>
@@ -6550,6 +6707,180 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
+	 * Get countries as a separate dimension for the coloured coverage display.
+	 *
+	 * @param int $days Number of days.
+	 * @param int $limit Maximum result count.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_top_country_rows($days = 30, $limit = 24) {
+		global $wpdb;
+
+		$since = wp_date('Y-m-d H:i:s', current_time('timestamp') - (max(1, (int) $days) * DAY_IN_SECONDS));
+		$events_table = $this->table_sql('events');
+
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT country_code, country_name, COUNT(*) AS hits
+				FROM {$events_table}
+				WHERE request_type = 'page_view' AND is_robot = 0 AND country_code <> '' AND created_at >= %s
+				GROUP BY country_code, country_name
+				ORDER BY hits DESC, country_name ASC
+				LIMIT %d",
+				$since,
+				max(1, (int) $limit)
+			),
+			ARRAY_A
+		);
+	}
+
+	/**
+	 * Summarise traffic in the requested reporting windows.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_traffic_period_summaries() {
+		global $wpdb;
+
+		$events_table = $this->table_sql('events');
+		$periods = array(7 => 'Woche', 30 => 'Monat', 90 => 'Quartal', 183 => 'Halbjahr');
+		$results = array();
+
+		foreach ($periods as $days => $label) {
+			$since = wp_date('Y-m-d H:i:s', current_time('timestamp') - ($days * DAY_IN_SECONDS));
+			$row = $wpdb->get_row(
+				$wpdb->prepare(
+					"SELECT COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+					FROM {$events_table}
+					WHERE request_type = 'page_view' AND is_robot = 0 AND created_at >= %s",
+					$since
+				),
+				ARRAY_A
+			);
+			$results[] = array('label' => $label, 'days' => $days, 'views' => (int) ($row['views'] ?? 0), 'visitors' => (int) ($row['visitors'] ?? 0));
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Aggregate opted-in screen/viewport dimensions from engagement events.
+	 *
+	 * @param int $days Number of days.
+	 * @param int $limit Maximum result count.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_screen_dimension_rows($days = 30, $limit = 8) {
+		global $wpdb;
+
+		$since = wp_date('Y-m-d H:i:s', current_time('timestamp') - (max(1, (int) $days) * DAY_IN_SECONDS));
+		$events_table = $this->table_sql('events');
+		$rows = $wpdb->get_results(
+			$wpdb->prepare("SELECT meta_json FROM {$events_table} WHERE request_type = 'page_engagement' AND is_robot = 0 AND created_at >= %s ORDER BY created_at DESC LIMIT 5000", $since),
+			ARRAY_A
+		);
+		$counts = array();
+
+		foreach ($rows as $row) {
+			$meta = json_decode((string) ($row['meta_json'] ?? ''), true);
+			$width = max(0, (int) ($meta['viewport_width'] ?? $meta['screen_width'] ?? 0));
+			$height = max(0, (int) ($meta['viewport_height'] ?? $meta['screen_height'] ?? 0));
+
+			if (! $width || ! $height) {
+				continue;
+			}
+
+			$label = $width . ' × ' . $height;
+			$counts[ $label ] = ($counts[ $label ] ?? 0) + 1;
+		}
+
+		$items = array();
+		foreach ($counts as $label => $hits) {
+			$items[] = array('label' => $label, 'hits' => $hits);
+		}
+
+		usort($items, static function ($left, $right) { return (int) $right['hits'] <=> (int) $left['hits']; });
+		return array_slice($items, 0, max(1, (int) $limit));
+	}
+
+	/**
+	 * Aggregate traffic that arrived through external referrers.
+	 *
+	 * @param int $days Number of days.
+	 * @param int $limit Maximum result count.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_external_referrer_source_rows($days = 30, $limit = 12) {
+		global $wpdb;
+
+		$since = wp_date('Y-m-d H:i:s', current_time('timestamp') - (max(1, (int) $days) * DAY_IN_SECONDS));
+		$events_table = $this->table_sql('events');
+		$site_host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT referrer_url FROM {$events_table}
+				WHERE request_type = 'page_view' AND is_robot = 0 AND referrer_url <> '' AND created_at >= %s
+				ORDER BY created_at DESC LIMIT 5000",
+				$since
+			),
+			ARRAY_A
+		);
+		$sources = array();
+
+		foreach ($rows as $row) {
+			$host = strtolower((string) wp_parse_url((string) ($row['referrer_url'] ?? ''), PHP_URL_HOST));
+
+			if (! $host || $host === $site_host || (strlen($host) > strlen($site_host) && substr($host, -strlen('.' . $site_host)) === '.' . $site_host)) {
+				continue;
+			}
+
+			$search_name = $this->get_search_engine_name($host);
+			$key = $search_name ? 'search:' . $search_name : 'site:' . $host;
+			if (! isset($sources[ $key ])) {
+				$sources[ $key ] = array(
+					'label' => $search_name ? 'Suche · ' . $search_name : $host,
+					'hits'  => 0,
+					'type'  => $search_name ? 'search' : 'referral',
+				);
+			}
+			$sources[ $key ]['hits']++;
+		}
+
+		$sources = array_values($sources);
+		usort($sources, static function ($left, $right) { return (int) $right['hits'] <=> (int) $left['hits']; });
+
+		return array_slice($sources, 0, max(1, (int) $limit));
+	}
+
+	/**
+	 * Return a human-readable search engine name for a referrer host.
+	 *
+	 * @param string $host Referrer host.
+	 * @return string
+	 */
+	private function get_search_engine_name($host) {
+		$engines = array(
+			'google.' => 'Google',
+			'bing.com' => 'Bing',
+			'yahoo.' => 'Yahoo',
+			'duckduckgo.com' => 'DuckDuckGo',
+			'yandex.' => 'Yandex',
+			'baidu.com' => 'Baidu',
+			'ecosia.org' => 'Ecosia',
+			'startpage.com' => 'Startpage',
+			'brave.com' => 'Brave Search',
+		);
+
+		foreach ($engines as $needle => $name) {
+			if (false !== strpos($host, $needle)) {
+				return $name;
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Get top rows for one stored client dimension.
 	 *
 	 * @param string $dimension Stored column name.
@@ -7095,6 +7426,62 @@ class Feuer_Cookie_Plugin {
 					<div class="feuer-cookie-bars__track">
 						<span class="feuer-cookie-bars__fill" style="width: <?php echo esc_attr((string) $width); ?>%;"></span>
 					</div>
+				</div>
+			<?php endforeach; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render country coverage tiles with a deterministic intensity scale.
+	 *
+	 * @param array<int,array<string,mixed>> $countries Country rows.
+	 * @return void
+	 */
+	private function render_country_coverage($countries) {
+		if (empty($countries)) {
+			echo '<div class="feuer-cookie-chart__empty">Noch keine Länderinformationen verfügbar. Ein CDN oder Proxy muss Geo-Header bereitstellen.</div>';
+			return;
+		}
+
+		$max_hits = max(1, max(array_map(static function ($row) { return (int) ($row['hits'] ?? 0); }, $countries)));
+		?>
+		<div class="feuer-cookie-country-grid">
+			<?php foreach ($countries as $country) : ?>
+				<?php $intensity = max(1, min(5, (int) ceil(((int) ($country['hits'] ?? 0) / $max_hits) * 5))); ?>
+				<div class="feuer-cookie-country-tile feuer-cookie-country-tile--<?php echo esc_attr((string) $intensity); ?>" title="<?php echo esc_attr((string) ($country['hits'] ?? 0)); ?> Aufrufe">
+					<span class="feuer-cookie-country-tile__code"><?php echo esc_html((string) ($country['country_code'] ?? '')); ?></span>
+					<strong><?php echo esc_html((string) ($country['country_name'] ?: $country['country_code'])); ?></strong>
+					<small><?php echo esc_html(number_format_i18n((int) ($country['hits'] ?? 0))); ?> Aufrufe</small>
+				</div>
+			<?php endforeach; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render an external-referrer ranking with a semantic source badge.
+	 *
+	 * @param array<int,array<string,mixed>> $sources Source rows.
+	 * @return void
+	 */
+	private function render_referrer_source_chart($sources) {
+		if (empty($sources)) {
+			echo '<div class="feuer-cookie-chart__empty">Noch keine externen Verweise im gewählten Zeitraum.</div>';
+			return;
+		}
+
+		$max_hits = max(1, max(array_map(static function ($row) { return (int) ($row['hits'] ?? 0); }, $sources)));
+		?>
+		<div class="feuer-cookie-bars feuer-cookie-bars--sources">
+			<?php foreach ($sources as $source) : ?>
+				<?php $hits = (int) ($source['hits'] ?? 0); $width = max(6, round(($hits / $max_hits) * 100, 2)); ?>
+				<div class="feuer-cookie-bars__item">
+					<div class="feuer-cookie-bars__head">
+						<span class="feuer-cookie-bars__label"><span class="feuer-cookie-source-badge feuer-cookie-source-badge--<?php echo esc_attr((string) ($source['type'] ?? 'referral')); ?>"><?php echo 'search' === ($source['type'] ?? '') ? 'Suche' : 'Verweis'; ?></span> <?php echo esc_html((string) ($source['label'] ?? 'Unbekannt')); ?></span>
+						<strong class="feuer-cookie-bars__value"><?php echo esc_html(number_format_i18n($hits)); ?></strong>
+					</div>
+					<div class="feuer-cookie-bars__track"><span class="feuer-cookie-bars__fill" style="width: <?php echo esc_attr((string) $width); ?>%;"></span></div>
 				</div>
 			<?php endforeach; ?>
 		</div>

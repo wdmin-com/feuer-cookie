@@ -1,5 +1,21 @@
 # Feuer-Cookie Historie
 
+## Version 1.25.0 - 04.09.2026
+
+Consent-Design-, GTM- und Besucheranalyse-Release.
+
+### Enthalten
+
+- GTM Consent Mode v2 mit standardmaessig verweigertem optionalem Google-Speicher und Aktualisierung nach einer ausdruecklichen Auswahl
+- Eigene Consent-Cookies werden mit `SameSite=Lax`, `Secure` und `HttpOnly` gesetzt
+- Neue Banner-Varianten: seitliche Dialoge und kompakter zentrierter Dialog
+- Erweiterte Cookie-Schaltflaeche mit zusaetzlichen Formen, Farbe und frei waehlbarer Bildschirmposition
+- Besuchsstatistik fuer Woche, Monat, Quartal und Halbjahr
+- Farbige Laenderuebersicht sowie Auswertungen nach Staedten, Geraeten, Browsern, Betriebssystemen und Bildschirmgroessen
+- Seiten-, aktive Aufenthalts- und Gesamtzeit-Auswertung nach Statistikfreigabe
+- Neue Akquisitionsauswertung fuer Suchmaschinen und externe Verweisquellen; direkte und interne Aufrufe werden ausgeschlossen
+- Plugin-Version auf `1.25.0` erhoeht
+
 ## Version 1.24.2 - 03.07.2026
 
 Kompatibilitaetsfix fuer Update-Pruefungen aus alten Plugin-Versionen.

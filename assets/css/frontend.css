@@ -494,6 +494,33 @@ body.feuer-cookie-shell {
 	font-size: 1.15rem;
 }
 
+.feuer-cookie-banner--side-left,
+.feuer-cookie-banner--side-right {
+	bottom: 18px;
+	top: 18px;
+	width: min(460px, calc(100vw - 36px));
+}
+
+.feuer-cookie-banner--side-left {
+	left: 18px;
+}
+
+.feuer-cookie-banner--side-right {
+	right: 18px;
+}
+
+.feuer-cookie-banner--side-left .feuer-cookie-banner__surface,
+.feuer-cookie-banner--side-right .feuer-cookie-banner__surface {
+	height: 100%;
+}
+
+.feuer-cookie-banner--center-compact {
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: min(500px, calc(100vw - 36px));
+}
+
 .feuer-cookie-banner__surface {
 	background: var(--bs-body-bg, rgba(255, 255, 255, 0.98));
 	border: 1px solid var(--bs-border-color, var(--cf-border));
@@ -653,6 +680,31 @@ body.feuer-cookie-shell {
 	--feuer-cookie-panel-glow: rgba(15, 23, 42, 0.28);
 }
 
+.feuer-cookie-reopen[data-feuer-cookie-panel-color="violet"] {
+	--feuer-cookie-panel-start: #7c3aed;
+	--feuer-cookie-panel-end: #4c1d95;
+	--feuer-cookie-panel-border: rgba(196, 181, 253, 0.56);
+	--feuer-cookie-panel-ring: rgba(167, 139, 250, 0.42);
+	--feuer-cookie-panel-glow: rgba(109, 40, 217, 0.28);
+}
+
+.feuer-cookie-reopen--bottom-left {
+	left: max(18px, calc(env(safe-area-inset-left) + 12px));
+	right: auto;
+}
+
+.feuer-cookie-reopen--middle-right,
+.feuer-cookie-reopen--middle-left {
+	bottom: auto;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+.feuer-cookie-reopen--middle-left {
+	left: max(18px, calc(env(safe-area-inset-left) + 12px));
+	right: auto;
+}
+
 .feuer-cookie-reopen__button {
 	align-items: center;
 	backdrop-filter: blur(10px);
@@ -726,6 +778,21 @@ body.feuer-cookie-shell {
 	display: block;
 	inset: 8px;
 	position: absolute;
+}
+
+.feuer-cookie-reopen__button--diamond,
+.feuer-cookie-reopen__button--diamond::after {
+	border-radius: 16px;
+	transform: rotate(45deg);
+}
+
+.feuer-cookie-reopen__button--diamond .feuer-cookie-reopen__icon {
+	transform: rotate(-45deg);
+}
+
+.feuer-cookie-reopen__button--soft-square,
+.feuer-cookie-reopen__button--soft-square::after {
+	border-radius: 28px;
 }
 
 .feuer-cookie-reopen__icon {

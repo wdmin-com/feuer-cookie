@@ -122,6 +122,15 @@
 		}
 	}
 
+	function updateGtmConsent(consent) {
+		if (typeof FeuerCookieData === 'undefined' || !FeuerCookieData.gtmConsentMode || !consent) {
+			return;
+		}
+
+		window.dataLayer = window.dataLayer || [];
+		window.dataLayer.push(['consent', 'update', consent]);
+	}
+
 	function postDecision(decision, root, extraData) {
 		var payload;
 		var extra = extraData || {};
@@ -174,6 +183,8 @@
 				} else {
 					syncLocalStorage(response.data.consentRecord || {});
 				}
+
+				updateGtmConsent(response.data.gtmConsent || FeuerCookieData.gtmConsent);
 
 				if (response.data.demoMode) {
 					return;
@@ -467,6 +478,11 @@
 			payload.set('duration', String(durationSeconds));
 			payload.set('active_duration', String(activeSeconds));
 			payload.set('scroll_depth', String(maxScrollDepth));
+			payload.set('screen_width', String(window.screen && window.screen.width ? window.screen.width : window.innerWidth || 0));
+			payload.set('screen_height', String(window.screen && window.screen.height ? window.screen.height : window.innerHeight || 0));
+			payload.set('viewport_width', String(window.innerWidth || 0));
+			payload.set('viewport_height', String(window.innerHeight || 0));
+			payload.set('pixel_ratio', String(window.devicePixelRatio || 1));
 			payload.set('reason', reason || 'pagehide');
 
 			sent = true;

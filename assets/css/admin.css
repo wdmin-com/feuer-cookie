@@ -1103,3 +1103,70 @@
 		transform: none;
 	}
 }
+/* Extended traffic reporting: compact period cards and colour-scaled geo coverage. */
+.feuer-cookie-period-grid {
+	display: grid;
+	gap: 14px;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	margin: 20px 0;
+}
+
+.feuer-cookie-period-card {
+	background: linear-gradient(145deg, #172554, #1d4ed8);
+	border-radius: 14px;
+	box-shadow: 0 10px 24px rgba(30, 64, 175, 0.18);
+	color: #eff6ff;
+	display: grid;
+	gap: 5px;
+	padding: 18px;
+}
+
+.feuer-cookie-period-card span,
+.feuer-cookie-period-card small { color: #bfdbfe; }
+.feuer-cookie-period-card strong { font-size: 1.8rem; line-height: 1; }
+
+.feuer-cookie-country-grid {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.feuer-cookie-country-tile {
+	border: 1px solid rgba(30, 64, 175, 0.16);
+	border-radius: 12px;
+	display: grid;
+	gap: 3px;
+	min-height: 94px;
+	padding: 12px;
+}
+
+.feuer-cookie-country-tile__code { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; }
+.feuer-cookie-country-tile small { color: #475569; }
+.feuer-cookie-country-tile--1 { background: #eff6ff; }
+.feuer-cookie-country-tile--2 { background: #dbeafe; }
+.feuer-cookie-country-tile--3 { background: #bfdbfe; }
+.feuer-cookie-country-tile--4 { background: #93c5fd; }
+.feuer-cookie-country-tile--5 { background: #60a5fa; color: #0f172a; }
+
+.feuer-cookie-source-badge {
+	border-radius: 999px;
+	display: inline-block;
+	font-size: 0.7rem;
+	font-weight: 800;
+	letter-spacing: 0.03em;
+	line-height: 1;
+	margin-right: 5px;
+	padding: 5px 7px;
+	text-transform: uppercase;
+}
+
+.feuer-cookie-source-badge--search { background: #dcfce7; color: #166534; }
+.feuer-cookie-source-badge--referral { background: #fef3c7; color: #92400e; }
+
+@media (max-width: 900px) {
+	.feuer-cookie-period-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+	.feuer-cookie-period-grid { grid-template-columns: 1fr; }
+}
