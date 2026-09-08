@@ -521,6 +521,203 @@ body.feuer-cookie-shell {
 	width: min(500px, calc(100vw - 36px));
 }
 
+/* CookieKit-inspired presets. They retain the plugin's granular consent actions. */
+.feuer-cookie-banner__preset-icon {
+	display: none;
+}
+
+.feuer-cookie-banner--cookiekit-dark {
+	bottom: 26px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(1024px, calc(100vw - 40px));
+}
+
+.feuer-cookie-backdrop--cookiekit-dark,
+.feuer-cookie-backdrop--cookiekit-toast,
+.feuer-cookie-backdrop--cookiekit-light {
+	background: transparent;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__surface {
+	background: #111827;
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	border-radius: 16px;
+	box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
+	color: #f8fafc;
+}
+
+.feuer-cookie-banner--cookiekit-dark .card-body {
+	align-items: center;
+	display: grid;
+	gap: 14px 20px;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	padding: 22px 26px;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__preset-icon,
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__preset-icon,
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__preset-icon {
+	align-items: center;
+	background: rgba(59, 130, 246, 0.14);
+	border: 1px solid rgba(96, 165, 250, 0.26);
+	border-radius: 10px;
+	color: #93c5fd;
+	display: inline-flex;
+	height: 44px;
+	justify-content: center;
+	width: 44px;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__intro {
+	display: block;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__eyebrow,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__title,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__summary,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__details summary,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__links a {
+	color: #f8fafc;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__eyebrow,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__details,
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__links {
+	display: none;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__title {
+	font-size: 1rem;
+	margin-bottom: 4px;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__summary {
+	color: #cbd5e1;
+	font-size: 0.9rem;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__actions {
+	grid-column: 3;
+	grid-row: 1;
+	margin: 0 !important;
+	white-space: nowrap;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-button--primary {
+	background: #334155;
+	border-color: #64748b;
+}
+
+.feuer-cookie-banner--cookiekit-dark .feuer-cookie-button--secondary {
+	border-color: #475569;
+	color: #e2e8f0;
+}
+
+.feuer-cookie-banner--cookiekit-toast {
+	bottom: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(520px, calc(100vw - 36px));
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__surface {
+	background: rgba(255, 255, 255, 0.98);
+	border-radius: 999px;
+	box-shadow: 0 18px 42px rgba(15, 23, 42, 0.15);
+}
+
+.feuer-cookie-banner--cookiekit-toast .card-body {
+	align-items: center;
+	display: grid;
+	gap: 10px;
+	grid-template-columns: auto minmax(0, 1fr);
+	padding: 10px 14px;
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__preset-icon {
+	background: #f8fafc;
+	border-color: #e2e8f0;
+	color: #0f172a;
+	height: 40px;
+	width: 40px;
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__eyebrow,
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__details,
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__links,
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__title {
+	display: none;
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__summary {
+	font-size: 0.9rem;
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__actions {
+	grid-column: 1 / -1;
+	justify-content: stretch;
+	margin: 0 !important;
+}
+
+.feuer-cookie-banner--cookiekit-toast .feuer-cookie-button {
+	flex: 1 1 0;
+}
+
+.feuer-cookie-banner--cookiekit-light {
+	bottom: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(770px, calc(100vw - 36px));
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__surface {
+	background: rgba(255, 255, 255, 0.98);
+	border: 1px solid #dbeafe;
+	border-radius: 4px;
+	box-shadow: 0 10px 26px rgba(30, 64, 175, 0.2);
+}
+
+.feuer-cookie-banner--cookiekit-light .card-body {
+	align-items: center;
+	display: grid;
+	gap: 16px;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	padding: 18px 20px;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__intro {
+	display: block;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__eyebrow,
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__title,
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__details,
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__links {
+	display: none;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__summary {
+	color: #64748b;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__actions {
+	grid-column: 3;
+	grid-row: 1;
+	margin: 0 !important;
+	white-space: nowrap;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-button--primary {
+	background: #3b82f6;
+	border-color: #3b82f6;
+}
+
+.feuer-cookie-banner--cookiekit-light .feuer-cookie-button--secondary {
+	border-color: #3b82f6;
+	color: #2563eb;
+}
+
 .feuer-cookie-banner__surface {
 	background: var(--bs-body-bg, rgba(255, 255, 255, 0.98));
 	border: 1px solid var(--bs-border-color, var(--cf-border));
@@ -1023,6 +1220,25 @@ body.feuer-cookie-shell {
 		padding-top: 12px;
 		position: sticky;
 		z-index: 2;
+	}
+
+	.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__actions,
+	.feuer-cookie-banner--cookiekit-toast .feuer-cookie-banner__actions,
+	.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__actions {
+		background: transparent;
+		border-top: 0;
+		position: static;
+	}
+
+	.feuer-cookie-banner--cookiekit-dark .card-body,
+	.feuer-cookie-banner--cookiekit-light .card-body {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.feuer-cookie-banner--cookiekit-dark .feuer-cookie-banner__actions,
+	.feuer-cookie-banner--cookiekit-light .feuer-cookie-banner__actions {
+		grid-column: 1 / -1;
+		grid-row: auto;
 	}
 
 	.feuer-cookie-banner__settings {

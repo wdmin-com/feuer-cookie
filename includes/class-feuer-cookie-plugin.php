@@ -1254,10 +1254,13 @@ class Feuer_Cookie_Plugin {
 		}
 
 		?>
-		<div class="feuer-cookie-backdrop" style="<?php echo esc_attr($style); ?>" aria-hidden="true"></div>
+		<div class="feuer-cookie-backdrop feuer-cookie-backdrop--<?php echo esc_attr($layout); ?>" style="<?php echo esc_attr($style); ?>" aria-hidden="true"></div>
 		<div class="feuer-cookie-banner feuer-cookie-banner--<?php echo esc_attr($layout); ?>" style="<?php echo esc_attr($style); ?>" data-feuer-cookie-banner>
 			<div class="feuer-cookie-banner__surface card border-0 shadow-lg" role="dialog" aria-modal="true" aria-labelledby="feuer-cookie-banner-title">
 				<div class="card-body p-3 p-md-4">
+					<div class="feuer-cookie-banner__preset-icon" aria-hidden="true">
+						<?php echo $this->get_panel_button_icon_svg('cookie'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					</div>
 					<div class="feuer-cookie-banner__intro">
 						<div class="d-flex flex-wrap align-items-center gap-2">
 							<span class="feuer-cookie-banner__eyebrow badge rounded-pill text-bg-light border">Cookie-Einstellungen</span>
@@ -2165,6 +2168,9 @@ class Feuer_Cookie_Plugin {
 			'side-left'            => 'Seitlich links',
 			'side-right'           => 'Seitlich rechts',
 			'center-compact'       => 'Kompakt zentriert',
+			'cookiekit-dark'       => 'CookieKit: Dunkle Leiste',
+			'cookiekit-toast'      => 'CookieKit: Kompakter Toast',
+			'cookiekit-light'      => 'CookieKit: Helle Akzentkarte',
 		);
 	}
 
