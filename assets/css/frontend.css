@@ -201,7 +201,9 @@ body.feuer-cookie-shell {
 	font-size: 0.95rem;
 	font-weight: 600;
 	line-height: 1.2;
+	-webkit-tap-highlight-color: transparent;
 	text-decoration: none;
+	touch-action: manipulation;
 	transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
@@ -419,6 +421,7 @@ body.feuer-cookie-shell {
 }
 
 .feuer-cookie-banner {
+	pointer-events: auto;
 	position: fixed;
 	width: min(760px, calc(100vw - 36px));
 	z-index: 99998;

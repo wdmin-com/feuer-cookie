@@ -1,5 +1,17 @@
 # Feuer-Cookie Historie
 
+## Version 1.25.1 - 11.09.2026
+
+Mobile Consent-Fix.
+
+### Enthalten
+
+- Consent-Schaltflaechen werden auch nach verzögerter JavaScript-Auslieferung durch Cache- und Optimierungsplugins initialisiert
+- Mobile Berührungen auf iOS und Android werden explizit verarbeitet; nach einem Tap wird keine zweite Entscheidung per synthetischem Klick gesendet
+- Mobile Schaltflaechen verwenden `touch-action: manipulation` für zuverlässige Reaktion ohne Doppel-Tap-Verzögerung
+- Der Zugriff auf blockiertes `localStorage` unterbricht die Consent-Initialisierung nicht mehr
+- Plugin-Version auf `1.25.1` erhöht
+
 ## Version 1.25.0 - 04.09.2026
 
 Consent-Design-, GTM- und Besucheranalyse-Release.

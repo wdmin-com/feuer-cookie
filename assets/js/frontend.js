@@ -98,25 +98,37 @@
 		});
 	}
 
+	function getLocalStorage() {
+		try {
+			return window.localStorage;
+		} catch (error) {
+			return null;
+		}
+	}
+
 	function syncLocalStorage(record) {
-		if (typeof FeuerCookieData === 'undefined' || !FeuerCookieData.localStorageKey || !window.localStorage) {
+		var storage = getLocalStorage();
+
+		if (typeof FeuerCookieData === 'undefined' || !FeuerCookieData.localStorageKey || !storage) {
 			return;
 		}
 
 		try {
-			window.localStorage.setItem(FeuerCookieData.localStorageKey, JSON.stringify(record || {}));
+			storage.setItem(FeuerCookieData.localStorageKey, JSON.stringify(record || {}));
 		} catch (error) {
 			/* noop */
 		}
 	}
 
 	function clearLocalStorage() {
-		if (typeof FeuerCookieData === 'undefined' || !FeuerCookieData.localStorageKey || !window.localStorage) {
+		var storage = getLocalStorage();
+
+		if (typeof FeuerCookieData === 'undefined' || !FeuerCookieData.localStorageKey || !storage) {
 			return;
 		}
 
 		try {
-			window.localStorage.removeItem(FeuerCookieData.localStorageKey);
+			storage.removeItem(FeuerCookieData.localStorageKey);
 		} catch (error) {
 			/* noop */
 		}
@@ -201,9 +213,24 @@
 
 	function bindDecisionButtons() {
 		document.querySelectorAll('[data-feuer-cookie-decision]').forEach(function (button) {
-			button.addEventListener('click', function () {
+			function submitDecision() {
+				if (button.disabled || 'true' === button.getAttribute('data-feuer-cookie-pending')) {
+					return;
+				}
+
+				button.setAttribute('data-feuer-cookie-pending', 'true');
 				var root = getConsentRoot(button);
-				postDecision(button.getAttribute('data-feuer-cookie-decision'), root);
+
+				postDecision(button.getAttribute('data-feuer-cookie-decision'), root).then(function () {
+					button.removeAttribute('data-feuer-cookie-pending');
+				});
+			}
+
+			button.addEventListener('click', submitDecision);
+			button.addEventListener('touchend', function (event) {
+				/* Prevent the synthetic click after a tap from posting twice. */
+				event.preventDefault();
+				submitDecision();
 			});
 		});
 	}
@@ -529,7 +556,7 @@
 		updateScrollDepth();
 	}
 
-	document.addEventListener('DOMContentLoaded', function () {
+	function initializeFrontend() {
 		if (typeof FeuerCookieData !== 'undefined' && FeuerCookieData.demoMode) {
 			clearLocalStorage();
 		}
@@ -548,5 +575,16 @@
 		if (typeof FeuerCookieData !== 'undefined' && FeuerCookieData.consentRecord) {
 			syncLocalStorage(FeuerCookieData.consentRecord);
 		}
-	});
+	}
+
+	/*
+	 * Optimisation plugins may defer this file until after DOMContentLoaded. In
+	 * that case, registering only an event listener leaves every consent button
+	 * without a handler. Initialise immediately when the DOM is already ready.
+	 */
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', initializeFrontend, { once: true });
+	} else {
+		initializeFrontend();
+	}
 }());

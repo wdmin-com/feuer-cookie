@@ -343,9 +343,9 @@ New-Item -ItemType Directory -Path $versionRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $latestRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
-Set-Content -LiteralPath (Join-Path $releaseRoot 'index.php') -Value "<?php`n// Silence is golden.`n" -Encoding ASCII
-Set-Content -LiteralPath (Join-Path $versionRoot 'index.php') -Value "<?php`n// Silence is golden.`n" -Encoding ASCII
-Set-Content -LiteralPath (Join-Path $latestRoot 'index.php') -Value "<?php`n// Silence is golden.`n" -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $releaseRoot 'index.php') -Value "<?php`n// Silence is golden." -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $versionRoot 'index.php') -Value "<?php`n// Silence is golden." -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $latestRoot 'index.php') -Value "<?php`n// Silence is golden." -Encoding ASCII
 Write-ReleaseAccessGuard -ReleaseRoot $releaseRoot
 Write-ReleaseAccessGuard -ReleaseRoot $versionRoot
 Write-ReleaseAccessGuard -ReleaseRoot $latestRoot

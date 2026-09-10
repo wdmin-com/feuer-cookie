@@ -4133,7 +4133,7 @@ class Feuer_Cookie_Plugin {
 		$daily_stats_table = $this->table_sql('daily_stats');
 
 		$totals = $wpdb->get_row(
-			"SELECT 
+			"SELECT
 				COALESCE(SUM(page_views), 0) AS page_views,
 				COALESCE(SUM(unique_visitors), 0) AS unique_visitors,
 				COALESCE(SUM(consents_accept), 0) AS consents_accept,
