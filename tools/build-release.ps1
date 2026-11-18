@@ -39,7 +39,7 @@ function Remove-WorkspacePath {
 function Get-PluginVersion {
     param([string]$PluginFile)
 
-    $pluginContent = Get-Content -LiteralPath $PluginFile -Raw
+    $pluginContent = Get-Content -LiteralPath $PluginFile -Raw -Encoding UTF8
     $versionMatch = [regex]::Match($pluginContent, "define\('FEUER_COOKIE_VERSION',\s*'([^']+)'\)")
 
     if (-not $versionMatch.Success) {
@@ -57,11 +57,16 @@ function Should-ExcludePackageItem {
     param([System.IO.FileSystemInfo]$Item)
 
     $excludedNames = @(
+        '.gitattributes',
+        '.gitignore',
         '.git',
         '.github',
         '.agents',
         '.codex',
-        'release'
+        'development',
+        'release',
+        'tools',
+        'TECHNICAL_SPEC_FEUER_ANALYTICS.md'
     )
 
     if ($excludedNames -contains $Item.Name) {
@@ -113,15 +118,11 @@ function Write-ReleaseAccessGuard {
     param([string]$ReleaseRoot)
 
     $rules = @'
-<FilesMatch "\.(zip)$">
-    Require all denied
-</FilesMatch>
+Options -Indexes
 
-<IfModule !mod_authz_core.c>
-    <FilesMatch "\.(zip)$">
-        Deny from all
-    </FilesMatch>
-</IfModule>
+<FilesMatch "\.(json|txt|zip)$">
+    Require all granted
+</FilesMatch>
 '@
 
     Set-Content -LiteralPath (Join-Path $ReleaseRoot '.htaccess') -Value $rules -Encoding ASCII
@@ -209,7 +210,7 @@ function Get-ProjectStats {
         $characterCount += $content.Length
         $lines = [regex]::Split($content, "`r?`n")
         $lineCount += $lines.Count
-        $nonEmptyLineCount += ($lines | Where-Object { $_.Trim().Length -gt 0 }).Count
+        $nonEmptyLineCount += @($lines | Where-Object { $_.Trim().Length -gt 0 }).Count
     }
 
     return [ordered]@{
@@ -234,7 +235,7 @@ function Get-LatestChangelogHtml {
         return '<p>Changelog is not available yet.</p>'
     }
 
-    $content = Get-Content -LiteralPath $HistoryPath -Raw
+    $content = Get-Content -LiteralPath $HistoryPath -Raw -Encoding UTF8
     $pattern = "(?ms)^## Version $([regex]::Escape($Version)).*?(?=^## Version |\z)"
     $match = [regex]::Match($content, $pattern)
 
@@ -272,6 +273,7 @@ function New-Manifest {
         [string]$Version,
         [string]$BaseUrl,
         [string]$DownloadUrl,
+        [string]$PackageHash,
         [string]$ChangelogHtml
     )
 
@@ -281,18 +283,20 @@ function New-Manifest {
         version = $Version
         homepage = $BaseUrl
         details_url = $BaseUrl
-        download_url = $BaseUrl
+        download_url = $DownloadUrl
         package_url = $DownloadUrl
-        author = 'Walter Faerber'
+        author = ('Walter F' + [char]0x00E4 + 'rber')
         author_homepage = 'https://wdmin.com'
         requires = '6.9'
         tested = '6.9'
         requires_php = '8.0'
         last_updated = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
         autoupdate = -not [string]::IsNullOrWhiteSpace($DownloadUrl)
+        package_hash = $PackageHash
+        package_hash_algorithm = 'sha256'
         sections = [ordered]@{
-            description = '<p>Feuer-Cookie is a WordPress consent and privacy plugin with local visitor analytics, IP protection, service-based blocking, diagnostics and a developer-hosted update channel.</p><ul><li>Granular consent by category and service</li><li>Local charts for page views, top pages, top IP entries and average active time per page</li><li>Optional full-IP storage with masked-IP default</li><li>Diagnostics for themes, plugins and published content</li><li>Release delivery from wdmin.com</li></ul>'
-            installation = '<ol><li>Upload the plugin folder to <code>wp-content/plugins/feuer-cookie/</code>.</li><li>Activate the plugin in WordPress.</li><li>Run the diagnostics once and review detected services.</li><li>Set privacy, imprint and support links in the plugin settings.</li><li>Use the build-release script before publishing a new package to the developer server.</li></ol>'
+            description = '<p>Feuer-Cookie is a WordPress consent and privacy plugin with service-based blocking, diagnostics and a verified update channel.</p><ul><li>Granular consent by category and service</li><li>Opt-in consent records without visitor analytics</li><li>Google Consent Mode v2 support</li><li>Optional consent bridge for Feuer Analytics</li><li>Release delivery from wdmin.com with SHA-256 verification</li></ul>'
+            installation = '<ol><li>Upload the plugin folder to <code>wp-content/plugins/feuer-cookie/</code>.</li><li>Activate the plugin in WordPress.</li><li>Run the diagnostics once and review detected services.</li><li>Set privacy, imprint and support links in the plugin settings.</li><li>Build and publish the signed release package to wdmin.com.</li></ol>'
             changelog = $ChangelogHtml
         }
     }
@@ -362,6 +366,9 @@ $stats = Get-ProjectStats -RootPath $resolvedSource
 $stats.version = $Version
 $stats.release_base_url = $normalizedBaseUrl
 
+$versionHash = ''
+$latestHash = ''
+
 if (-not $SkipZip) {
     Remove-WorkspacePath -TargetPath $versionZip -RootPath $resolvedSource
     Remove-WorkspacePath -TargetPath $latestZip -RootPath $resolvedSource
@@ -375,8 +382,15 @@ if (-not $SkipZip) {
 }
 
 $changelogHtml = Get-LatestChangelogHtml -HistoryPath $historyFile -Version $Version
-$versionManifest = New-Manifest -Version $Version -BaseUrl $normalizedBaseUrl -DownloadUrl '' -ChangelogHtml $changelogHtml
-$latestManifest = New-Manifest -Version $Version -BaseUrl $normalizedBaseUrl -DownloadUrl '' -ChangelogHtml $changelogHtml
+$versionDownloadUrl = $normalizedBaseUrl + 'release/' + $Version + '/feuer-cookie.zip'
+$latestDownloadUrl = $normalizedBaseUrl + 'release/latest/feuer-cookie.zip'
+
+if ($SkipZip) {
+    throw 'A release manifest cannot be generated without the signed ZIP package. Remove -SkipZip.'
+}
+
+$versionManifest = New-Manifest -Version $Version -BaseUrl $normalizedBaseUrl -DownloadUrl $versionDownloadUrl -PackageHash $versionHash -ChangelogHtml $changelogHtml
+$latestManifest = New-Manifest -Version $Version -BaseUrl $normalizedBaseUrl -DownloadUrl $latestDownloadUrl -PackageHash $latestHash -ChangelogHtml $changelogHtml
 
 Write-JsonFile -Path (Join-Path $versionRoot 'update.json') -Data $versionManifest
 Write-JsonFile -Path (Join-Path $latestRoot 'update.json') -Data $latestManifest

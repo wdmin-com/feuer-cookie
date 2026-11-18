@@ -70,7 +70,7 @@ class Feuer_Cookie_Diagnostics {
 
 		return array(
 			'generated_at'    => current_time('mysql'),
-			'scan_mode'       => 'request_context_only',
+			'scan_mode'       => 'static_request_source_analysis',
 			'record_count'    => count($records),
 			'active_theme'    => $theme_info,
 			'active_plugins'  => array_map(
@@ -185,15 +185,10 @@ class Feuer_Cookie_Diagnostics {
 		$max_file_count = 600;
 
 		foreach ($iterator as $file) {
-			if ($visited_files >= $max_file_count) {
-				break;
-			}
-
 			if (! $file->isFile()) {
 				continue;
 			}
 
-			$visited_files++;
 			$file_path = wp_normalize_path($file->getPathname());
 
 			if ($this->should_skip_scan_file($file_path)) {
@@ -209,6 +204,12 @@ class Feuer_Cookie_Diagnostics {
 			if ((int) $file->getSize() > $max_file_size) {
 				continue;
 			}
+
+			if ($visited_files >= $max_file_count) {
+				break;
+			}
+
+			$visited_files++;
 
 			if (! is_readable($file_path)) {
 				continue;
@@ -311,10 +312,12 @@ class Feuer_Cookie_Diagnostics {
 			),
 			array(
 				'evidence' => 'WP HTTP request',
+				'execution_context' => 'server',
 				'regex'    => '#\b(?:wp_remote_get|wp_remote_post|wp_remote_request|wp_safe_remote_get|wp_safe_remote_post|wp_safe_remote_request|wp_remote_head)\s*\(\s*["\']((?:https?:)?//[^"\']+)["\']#i',
 			),
 			array(
 				'evidence' => 'cURL request',
+				'execution_context' => 'server',
 				'regex'    => '#\bcurl_setopt(?:_array)?\s*\([^;]*CURLOPT_URL[^;]*["\']((?:https?:)?//[^"\']+)["\']#is',
 			),
 			array(
@@ -447,10 +450,11 @@ class Feuer_Cookie_Diagnostics {
 
 				$seen[ $key ] = true;
 				$results[]    = array(
-					'url'      => $url,
-					'evidence' => $pattern['evidence'],
-					'line'     => $line,
-					'context'  => $this->line_excerpt($content, $line),
+					'url'                => $url,
+					'evidence'           => $pattern['evidence'],
+					'execution_context'  => $pattern['execution_context'] ?? 'browser',
+					'line'               => $line,
+					'context'            => $this->line_excerpt($content, $line),
 				);
 			}
 		}
@@ -465,7 +469,17 @@ class Feuer_Cookie_Diagnostics {
 	 * @return bool
 	 */
 	private function should_skip_scan_file($file_path) {
-		$blocked_segments = array('/release/', '/versions/', '/.git/', '/.svn/');
+		$file_path = '/' . trim(strtolower(str_replace('\\', '/', $file_path)), '/') . '/';
+		$blocked_segments = array(
+			'/release/',
+			'/version/',
+			'/versions/',
+			'/snippets/',
+			'/vendor/',
+			'/node_modules/',
+			'/.git/',
+			'/.svn/',
+		);
 
 		foreach ($blocked_segments as $segment) {
 			if (false !== strpos($file_path, $segment)) {
@@ -620,21 +634,30 @@ class Feuer_Cookie_Diagnostics {
 			return null;
 		}
 
+		if ('cloudflare.com' === $domain || 'cdnjs.cloudflare.com' === $domain || (strlen($domain) > strlen('.cloudflare.com') && substr($domain, -strlen('.cloudflare.com')) === '.cloudflare.com')) {
+			return null;
+		}
+
 		if ($site_host && $domain === $site_host) {
 			return null;
 		}
 
 		$service = $this->guess_service($domain, $url);
+		$execution_context = (string) ($candidate['execution_context'] ?? 'browser');
+		$recommendation = 'server' === $execution_context
+			? 'Interner Serveraufruf; kein Browser-Cookie-Dienst. Bei Bedarf separat in der technischen Dokumentation erfassen.'
+			: $this->recommendation_for($service, $domain);
 
 		return array(
 			'service'        => $service,
 			'domain'         => $domain,
 			'url'            => esc_url_raw($url),
+			'execution_context' => $execution_context,
 			'location'       => $location,
 			'line'           => isset($candidate['line']) ? (string) $candidate['line'] : '',
 			'evidence'       => isset($candidate['evidence']) ? (string) $candidate['evidence'] : 'Direkter Request',
 			'context'        => isset($candidate['context']) ? (string) $candidate['context'] : '',
-			'recommendation' => $this->recommendation_for($service, $domain),
+			'recommendation' => $recommendation,
 			'notice'         => $this->notice_for($service, $domain),
 		);
 	}
@@ -652,6 +675,10 @@ class Feuer_Cookie_Diagnostics {
 
 		if (false !== strpos($domain, 'openstreetmap.org') || false !== strpos($domain, 'nominatim.openstreetmap.org')) {
 			return 'OpenStreetMap';
+		}
+
+		if ((false !== strpos($domain, 'google.com') || false !== strpos($domain, 'recaptcha.net')) && false !== strpos($url, 'recaptcha')) {
+			return 'Google reCAPTCHA';
 		}
 
 		if (false !== strpos($url, 'leaflet') || false !== strpos($domain, 'leafletjs.com')) {
@@ -682,10 +709,6 @@ class Feuer_Cookie_Diagnostics {
 			return 'Font Awesome';
 		}
 
-		if (false !== strpos($domain, 'cdnjs.cloudflare.com') || false !== strpos($domain, 'cloudflare.com')) {
-			return 'Cloudflare/CDN';
-		}
-
 		if (false !== strpos($domain, 'unpkg.com')) {
 			return 'unpkg CDN';
 		}
@@ -707,7 +730,6 @@ class Feuer_Cookie_Diagnostics {
 			case 'Leaflet':
 				return 'Leaflet moeglichst lokal ausliefern oder eine CDN-Nutzung ausdruecklich in Consent und Datenschutzerklaerung dokumentieren.';
 			case 'Bootstrap/CDN':
-			case 'Cloudflare/CDN':
 			case 'unpkg CDN':
 				return 'Pruefen, ob CDN-Dateien lokal ausgeliefert werden koennen. Falls nicht, den Dienst im Consent und in der Datenschutzerklaerung benennen.';
 			case 'Google Analytics/Tag Manager':
@@ -738,7 +760,6 @@ class Feuer_Cookie_Diagnostics {
 			case 'Leaflet':
 				return 'Leaflet erkannt: Bei CDN-Auslieferung lokale Bereitstellung oder Consent-Sperre bevorzugen.';
 			case 'Bootstrap/CDN':
-			case 'Cloudflare/CDN':
 			case 'unpkg CDN':
 				return 'Externe CDN-Ressourcen erkannt: Eine lokale Auslieferung ist datenschutzfreundlicher.';
 			case 'Google Analytics/Tag Manager':

@@ -1,19 +1,21 @@
-# Feuer-Cookie
+﻿# Feuer-Cookie
 
-Feuer-Cookie ist ein WordPress-Plugin für Zugriffskontrolle, granulare Consent-Steuerung, lokale Besucherstatistik, IP-Sperren und eine Autodiagnose von Themes, Plugins und Inhalten. Das Plugin wurde für deutschsprachige Websites konzipiert und stellt alle Oberflächen, Texte und Projektunterlagen vollständig auf Deutsch bereit.
+> **Hinweis für Version 1.27.5:** Lokale Reichweitenmessung ist optional und beginnt ausschließlich nach ausdrücklicher Freigabe von „Feuer-Cookie Statistik“. Ohne diese Freigabe werden keine Seitenaufrufe erfasst.
+
+Feuer-Cookie ist ein WordPress-Plugin für Zugriffskontrolle, granulare Consent-Steuerung, Dienst-Blocking und eine Autodiagnose von Themes, Plugins und Inhalten. Das Plugin wurde für deutschsprachige Websites konzipiert und stellt alle Oberflächen, Texte und Projektunterlagen vollständig auf Deutsch bereit.
 
 ## Zielbild
 
 Feuer-Cookie setzt nicht nur ein Consent-Banner ein, sondern stellt vor dem Besuch der Website eine echte Auswahl nach Zweck und Empfänger bereit. Besucher können damit selbst entscheiden,
 
 - ob nur technisch erforderliche Dienste aktiv bleiben,
-- ob sie in die lokale Statistik einbezogen werden,
+- ob sie Feuer Analytics als optionalen Statistik-Dienst freigeben,
 - welche Karten-, Medien- oder externen Ressourcen freigegeben werden,
 - welche konkret erkannten Empfänger Daten erhalten dürfen.
 
 Bei der Auswahl `Nur erforderliche Dienste` bleibt die Website nutzbar; optionale Empfänger bleiben dabei deaktiviert.
 
-## Funktionsumfang in Version 1.24.0
+## Funktionsumfang
 
 - Consent-Banner mit gleichwertigen Buttons für:
   - `Alle akzeptieren`
@@ -30,35 +32,24 @@ Bei der Auswahl `Nur erforderliche Dienste` bleibt die Website nutzbar; optional
 - Karten- und Service-Gates verhalten sich auch bei aktiviertem Admin-Bypass konsistent zum restlichen Frontend-Blocking
 - Automatischer Re-Consent bei Änderungen an Text, Revision, Kategorien oder Diensten
 - JSON-Export der Konfiguration und Journal der Consent-Versionen
-- Status-Bereich mit Health Check, Realtime-Sitzungen, Frontend Request Scan und Diagnosehinweisen fuer leere Statistiken
-- Lokaler SEO-Audit fuer veroeffentlichte Inhalte mit Titel-, Meta-, Canonical-, Indexierungs-, Content- und Traffic-Priorisierung
-- WordPress-Dashboard-Widget mit Tabs fuer heutige Besucher, 7-Tage-Werte, Cookie-Freigaben und Betriebsstatus
-- Besucherbereich mit Filtern nach Zeitraum, Consent-Typ, IP, Pfad, Geraet, Browser und Robot-Status
-- CSV- und JSON-Export gefilterter Besucherereignisse
+- Status-Bereich für Consent, Dienst-Blocking und Kompatibilitätsdiagnose
+- Optionale Feuer-Analytics-Synchronisierung; Analytics erhält nur die Freigabe des aktuellen Aufrufs
+- Eigene Statistikübersicht mit Seitenaufrufen, pseudonymen Sitzungen, Top-Seiten, Herkunftsdiensten sowie groben Geräte- und Browsergruppen
+- Vergleich der Seitenaufrufe und Sitzungen mit dem vorherigen gleich langen Zeitraum sowie CSV-Export aggregierter Berichte
+- Lokale Besuchsmessung nur nach ausdrücklicher Freigabe der Statistik-Kategorie; keine IP-Adressen oder vollständigen URLs in Statistikereignissen
 - Consent Audit Trail fuer nachvollziehbare Cookie-Entscheidungen
 - Preview-Link fuer Administratoren, um den Consent-Flow trotz Admin-Bypass wie ein Besucher zu testen
-- Getrennte Aufbewahrungsfristen fuer Rohereignisse, Consent Audit und aggregierte Tagesstatistiken
-- Entwickler-gehostete Plugin-Updates ueber `wdmin.com/plugins/feuer-cookie/release/latest/update.json`
-- Build-Skript fuer Release-Pakete, Checksummen und Projektmetriken
+- Aufbewahrungsfrist für datensparsame Consent-Nachweise
+- Manifest-basierte Plugin-Updates über `wdmin.com/plugins/feuer-cookie/release/latest/update.json`, HTTPS und SHA-256-Prüfung
+- Build-Skript für Release-Pakete, Checksummen und Projektmetriken
 - Weiterhin verfügbare isolierte Layoutvarianten:
   - `Feuerwand`
   - `Kontrollkarte`
   - `Sicherheitsleiste`
-- Eigene Datenbanktabellen für Rohereignisse, Tagesstatistiken und IP-Blockliste
-- Tagesaggregation für:
-  - Seitenaufrufe
-  - eindeutige Sitzungen
-  - gespeicherte Auswahlentscheidungen
-  - Besuche mit nur erforderlichen Diensten
-  - geblockte Anfragen
-- Speicherung von:
-  - Request-Pfad
-  - Referrer-Pfad
-  - Consent-Status
-  - Browser-Agent
-  - Browser-Sprache
-  - maskierter oder optional vollständiger IP-Adresse
-  - gehashter IP-Adresse für Korrelation
+- Consent-Protokoll, optionale Statistikereignisse und IP-Sperrliste in getrennten Verarbeitungszwecken
+- Statistikberichte über Seitenpfade, 30-Minuten-Sitzungen, Herkunftsdomains und grobe Geräte-/Browsergruppen
+- Keine IP-Adressen, Query-Parameter, vollständigen URLs oder rohen Browser-Kennungen in freiwilligen Statistikereignissen
+- Automatische Löschung der Statistik-Rohdaten nach konfigurierbarer Frist
 - Sperrseite für geblockte IP-Adressen
 - Autodiagnose für aktive Themes, Plugins und bis zu 50 veröffentlichte Seiten/Beiträge
 - Lokale Makros für Header und Footer ohne externe Quellen
@@ -125,15 +116,14 @@ Feuer-Cookie verwaltet die Einwilligung getrennt nach Kategorien und einzelnen D
 - YouTube
 - Vimeo
 - Bootstrap / CDN
-- Cloudflare / CDN
 - unpkg CDN
 - Font Awesome
 
-Zusätzlich erkannte externe Domains werden nach dem Diagnosescan automatisch als eigene Dienste in die Auswahl aufgenommen.
+Zusätzlich erkannte Browser-Ressourcen können nach Prüfung im Cookie-Dialog als Dienste erscheinen. Serverseitige API-Aufrufe werden nicht als Cookie-Dienste für Besucher übernommen. Der statische Diagnosescan belegt eine Fundstelle im Quellcode, aber nicht, dass ein Dienst zur Laufzeit geladen wird.
 
 ## Statistik und Logs
 
-Feuer-Cookie speichert Rohereignisse in der Tabelle `wp_feu-cookie_events` und führt eine Tagesaggregation in `wp_feu-cookie_daily_stats`.
+Feuer-Cookie speichert Consent-Nachweise und – nur nach ausdrücklicher Freigabe von „Feuer-Cookie Statistik“ – reduzierte Seitenaufrufe in der Tabelle `wp_feu-cookie_events`.
 
 ### Besuchsereignisse
 
@@ -143,11 +133,24 @@ Feuer-Cookie speichert Rohereignisse in der Tabelle `wp_feu-cookie_events` und f
 - `consent_accept_all`
 - `blocked_ip`
 
-Wichtig: Seitenaufrufe werden nur dann protokolliert, wenn der Empfänger `feuer_cookie_statistics` freigegeben wurde. Sicherheitsrelevante Grundereignisse bleiben davon unberührt.
+Wichtig: Seitenaufrufe werden nur dann protokolliert, wenn der Empfänger `feuer_cookie_statistics` freigegeben wurde. Gespeichert werden der Seitenpfad ohne Query-Parameter, eine zufällige gehashte 30-Minuten-Sitzungskennung, die externe Herkunftsdomain und grobe Clientgruppen. IP-Adressen, vollständige URLs und rohe User-Agents bleiben leer. Die Aufbewahrung ist unter „Einstellungen → Datenschutz“ zwischen 30 und 365 Tagen konfigurierbar.
+
+Consent- und Sperrlistenereignisse werden nach der konfigurierten Consent-Audit-Frist gelöscht. Seitenaufrufe, Engagement-Ereignisse und tägliche aggregierte Statistik werden nach der Statistik-Aufbewahrungsfrist gelöscht.
 
 ### IP-Handling
 
-Standardmäßig wird eine maskierte IP im Rohlog gespeichert, zum Beispiel `203.0.113.0`. Parallel wird ein HMAC-Hash der IP gespeichert, um wiederkehrende Sitzungen oder Missbrauchsmuster erkennen zu können, ohne den Klarwert dauerhaft zu benötigen.
+Consent-Nachweise speichern standardmäßig eine maskierte IP im Rohlog, zum Beispiel `203.0.113.0`, und einen HMAC-Hash. Reduzierte Seitenaufrufe nach Statistik-Einwilligung speichern keine IP-Adresse. Die Client-IP wird standardmäßig ausschließlich aus `REMOTE_ADDR` ermittelt; vom Besucher mitsendbare Forwarded-Header werden ignoriert.
+
+Wenn WordPress hinter einem eigenen Reverse-Proxy läuft, können dessen exakte IP-Adressen explizit als vertrauenswürdig freigegeben werden. Der Proxy muss `X-Forwarded-For` korrekt überschreiben bzw. ergänzen:
+
+```php
+add_filter('feuer_cookie_trusted_proxy_ips', function ($trusted) {
+	$trusted[] = '127.0.0.1'; // Durch die tatsächliche Proxy-IP ersetzen.
+	return $trusted;
+});
+```
+
+Länder- und Ortsangaben werden nur aus serverseitig gesetzten `GEOIP_COUNTRY_CODE`- und `GEOIP_CITY`-Variablen gelesen. Vom Browser übermittelte Proxy- oder CDN-Header werden dafür nicht verwendet.
 
 ## IP-Sperrliste
 
@@ -170,7 +173,7 @@ Gesucht werden externe URLs und typische Drittanbieter-Dienste. Die Ausgabe zeig
 
 ## SEO-Audit
 
-Unter `Feuer-Cookie -> SEO-Audit` kann ein lokaler On-Page-Check gestartet werden. Der Audit folgt dem OpenSEO-Coach-Prinzip: zuerst Projekt- und Seitensignale erfassen, dann konkrete naechste Schritte priorisieren.
+Unter `Feuer-Cookie -> SEO-Audit` kann ein lokaler On-Page-Check gestartet werden. Der Audit erfasst zuerst Projekt- und Seitensignale und priorisiert dann konkrete naechste Schritte.
 
 Geprueft werden:
 

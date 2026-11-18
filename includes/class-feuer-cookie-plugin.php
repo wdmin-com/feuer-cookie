@@ -28,13 +28,6 @@ class Feuer_Cookie_Plugin {
 	private $diagnostics_key = 'feuer_cookie_diagnostics_report';
 
 	/**
-	 * SEO audit option key.
-	 *
-	 * @var string
-	 */
-	private $seo_audit_key = 'feuer_cookie_seo_audit_report';
-
-	/**
 	 * Consent revision history option key.
 	 *
 	 * @var string
@@ -91,20 +84,6 @@ class Feuer_Cookie_Plugin {
 	private $diagnostics;
 
 	/**
-	 * SEO audit object.
-	 *
-	 * @var Feuer_Cookie_SEO_Audit
-	 */
-	private $seo_audit;
-
-	/**
-	 * Prevent duplicate page-view logs.
-	 *
-	 * @var bool
-	 */
-	private $request_logged = false;
-
-	/**
 	 * Return singleton.
 	 *
 	 * @return Feuer_Cookie_Plugin
@@ -123,7 +102,7 @@ class Feuer_Cookie_Plugin {
 	 * @return string
 	 */
 	private function get_banner_summary_text() {
-		return 'Wir verwenden notwendige Cookies sowie optional Karten und externe Inhalte. Sie koennen akzeptieren, ablehnen oder individuell auswaehlen.';
+		return 'Wir verwenden notwendige Funktionen und optionale Statistik, Karten sowie externe Inhalte. Sie koennen akzeptieren, ablehnen oder individuell auswaehlen.';
 	}
 
 	/**
@@ -139,8 +118,6 @@ class Feuer_Cookie_Plugin {
 		);
 
 		$this->diagnostics = new Feuer_Cookie_Diagnostics();
-		$this->seo_audit   = new Feuer_Cookie_SEO_Audit();
-
 		add_action('init', array($this, 'register_hooks'));
 	}
 
@@ -195,22 +172,21 @@ class Feuer_Cookie_Plugin {
 	 * @return void
 	 */
 	public function register_hooks() {
+		$this->migrate_banner_layout_setting();
 		$this->maybe_upgrade_schema();
 
 		add_action('admin_menu', array($this, 'register_admin_menu'));
-		add_action('wp_dashboard_setup', array($this, 'register_dashboard_widget'));
 		add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
 		add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
 		// Must run before a GTM container that is printed through wp_head.
 		add_action('wp_head', array($this, 'render_gtm_consent_defaults'), 0);
 		add_action('template_redirect', array($this, 'maybe_reset_demo_mode_storage'), -1);
 		add_action('template_redirect', array($this, 'handle_frontend_gate'), 0);
+		add_action('template_redirect', array($this, 'maybe_track_analytics_page_view'), 20);
 		add_action('wp_footer', array($this, 'render_consent_banner'), 1);
 		add_action('wp_footer', array($this, 'render_reopen_button'));
 		add_action('wp_ajax_feuer_cookie_set_consent', array($this, 'handle_consent_ajax'));
 		add_action('wp_ajax_nopriv_feuer_cookie_set_consent', array($this, 'handle_consent_ajax'));
-		add_action('wp_ajax_feuer_cookie_track_engagement', array($this, 'handle_engagement_ajax'));
-		add_action('wp_ajax_nopriv_feuer_cookie_track_engagement', array($this, 'handle_engagement_ajax'));
 		add_action('admin_post_feuer_cookie_save_settings', array($this, 'handle_settings_save'));
 		add_action('admin_post_feuer_cookie_check_updates', array($this, 'handle_check_updates'));
 		add_action('admin_post_feuer_cookie_add_block', array($this, 'handle_add_block'));
@@ -218,6 +194,7 @@ class Feuer_Cookie_Plugin {
 		add_action('admin_post_feuer_cookie_run_diagnostics', array($this, 'handle_run_diagnostics'));
 		add_action('admin_post_feuer_cookie_run_seo_audit', array($this, 'handle_run_seo_audit'));
 		add_action('admin_post_feuer_cookie_export_events', array($this, 'handle_export_events'));
+		add_action('admin_post_feuer_cookie_export_analytics', array($this, 'handle_analytics_export'));
 		add_action('feuer_cookie_cleanup_logs', array($this, 'cleanup_old_logs'));
 		add_filter('the_content', array($this, 'filter_content_embeds'), 20);
 		add_filter('pre_do_shortcode_tag', array($this, 'filter_external_shortcode_tag'), 10, 4);
@@ -227,6 +204,9 @@ class Feuer_Cookie_Plugin {
 		add_filter('plugin_action_links_' . plugin_basename(FEUER_COOKIE_FILE), array($this, 'add_action_links'));
 		add_filter('script_loader_tag', array($this, 'filter_external_script_tag'), 10, 3);
 		add_filter('style_loader_tag', array($this, 'filter_external_style_tag'), 10, 4);
+		// Feuer Analytics may register its service independently. Keep it visible
+		// only when the site owner has explicitly enabled the optional bridge.
+		add_filter('feuer_cookie_registered_services', array($this, 'filter_feuer_analytics_service'), 100);
 	}
 
 	/**
@@ -277,17 +257,8 @@ class Feuer_Cookie_Plugin {
 			KEY city (city),
 			KEY device_type (device_type),
 			KEY browser_name (browser_name),
-			KEY created_at (created_at)
-		) {$charset};";
-
-		$daily_stats_sql = "CREATE TABLE {$daily_stats_table} (
-			day date NOT NULL,
-			page_views bigint(20) unsigned NOT NULL DEFAULT 0,
-			unique_visitors bigint(20) unsigned NOT NULL DEFAULT 0,
-			consents_accept bigint(20) unsigned NOT NULL DEFAULT 0,
-			consents_decline bigint(20) unsigned NOT NULL DEFAULT 0,
-			blocked_requests bigint(20) unsigned NOT NULL DEFAULT 0,
-			PRIMARY KEY  (day)
+			KEY created_at (created_at),
+			KEY event_period (request_type, created_at)
 		) {$charset};";
 
 		$blocks_sql = "CREATE TABLE {$ip_blocks_table} (
@@ -300,6 +271,16 @@ class Feuer_Cookie_Plugin {
 			PRIMARY KEY  (id),
 			KEY ip_pattern (ip_pattern),
 			KEY is_active (is_active)
+		) {$charset};";
+
+		$daily_stats_sql = "CREATE TABLE {$daily_stats_table} (
+			day date NOT NULL,
+			page_views bigint(20) unsigned NOT NULL DEFAULT 0,
+			unique_visitors bigint(20) unsigned NOT NULL DEFAULT 0,
+			consents_accept bigint(20) unsigned NOT NULL DEFAULT 0,
+			consents_decline bigint(20) unsigned NOT NULL DEFAULT 0,
+			blocked_requests bigint(20) unsigned NOT NULL DEFAULT 0,
+			PRIMARY KEY  (day)
 		) {$charset};";
 
 		dbDelta($events_sql);
@@ -345,6 +326,26 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
+	 * Move saved banner layouts to their current identifiers without changing the selected style.
+	 *
+	 * @return void
+	 */
+	private function migrate_banner_layout_setting() {
+		$settings = get_option($this->settings_key);
+
+		if (! is_array($settings) || ! isset($settings['banner_layout'])) {
+			return;
+		}
+
+		$layout = $this->sanitize_banner_layout((string) $settings['banner_layout']);
+
+		if ($layout !== $settings['banner_layout']) {
+			$settings['banner_layout'] = $layout;
+			update_option($this->settings_key, $settings);
+		}
+	}
+
+	/**
 	 * Register admin menu pages.
 	 *
 	 * @return void
@@ -361,6 +362,7 @@ class Feuer_Cookie_Plugin {
 		);
 
 		add_submenu_page('feuer-cookie', 'Übersicht', 'Übersicht', 'manage_options', 'feuer-cookie', array($this, 'render_overview_page'));
+		add_submenu_page('feuer-cookie', 'Statistik', 'Statistik', 'manage_options', 'feuer-cookie-analytics', array($this, 'render_analytics_page'));
 		add_submenu_page('feuer-cookie', 'Besucher', 'Besucher', 'manage_options', 'feuer-cookie-visitors', array($this, 'render_visitors_page'));
 		add_submenu_page('feuer-cookie', 'Status', 'Status', 'manage_options', 'feuer-cookie-status', array($this, 'render_status_page'));
 		add_submenu_page('feuer-cookie', 'IP-Sperrliste', 'IP-Sperrliste', 'manage_options', 'feuer-cookie-blocklist', array($this, 'render_blocklist_page'));
@@ -408,13 +410,13 @@ class Feuer_Cookie_Plugin {
 			</div>
 
 			<div class="feuer-cookie-dashboard-tabs" role="tablist" aria-label="Feuer-Cookie Dashboard">
-				<button type="button" class="is-active" data-feuer-cookie-dashboard-tab="today"><span class="dashicons dashicons-visibility" aria-hidden="true"></span> Heute</button>
-				<button type="button" data-feuer-cookie-dashboard-tab="week"><span class="dashicons dashicons-chart-area" aria-hidden="true"></span> 7 Tage</button>
-				<button type="button" data-feuer-cookie-dashboard-tab="cookie"><span class="dashicons dashicons-yes-alt" aria-hidden="true"></span> Cookie</button>
-				<button type="button" data-feuer-cookie-dashboard-tab="status"><span class="dashicons dashicons-performance" aria-hidden="true"></span> Status</button>
+				<button id="feuer-cookie-dashboard-tab-today" type="button" role="tab" aria-selected="true" aria-controls="feuer-cookie-dashboard-panel-today" tabindex="0" class="is-active" data-feuer-cookie-dashboard-tab="today"><span class="dashicons dashicons-visibility" aria-hidden="true"></span> Heute</button>
+				<button id="feuer-cookie-dashboard-tab-week" type="button" role="tab" aria-selected="false" aria-controls="feuer-cookie-dashboard-panel-week" tabindex="-1" data-feuer-cookie-dashboard-tab="week"><span class="dashicons dashicons-chart-area" aria-hidden="true"></span> 7 Tage</button>
+				<button id="feuer-cookie-dashboard-tab-cookie" type="button" role="tab" aria-selected="false" aria-controls="feuer-cookie-dashboard-panel-cookie" tabindex="-1" data-feuer-cookie-dashboard-tab="cookie"><span class="dashicons dashicons-yes-alt" aria-hidden="true"></span> Cookie</button>
+				<button id="feuer-cookie-dashboard-tab-status" type="button" role="tab" aria-selected="false" aria-controls="feuer-cookie-dashboard-panel-status" tabindex="-1" data-feuer-cookie-dashboard-tab="status"><span class="dashicons dashicons-performance" aria-hidden="true"></span> Status</button>
 			</div>
 
-			<div class="feuer-cookie-dashboard-panel is-active" data-feuer-cookie-dashboard-panel="today">
+			<div id="feuer-cookie-dashboard-panel-today" class="feuer-cookie-dashboard-panel is-active" role="tabpanel" aria-labelledby="feuer-cookie-dashboard-tab-today" tabindex="0" data-feuer-cookie-dashboard-panel="today">
 				<div class="feuer-cookie-dashboard-metrics">
 					<?php $this->render_dashboard_metric('Aufrufe', (int) $stats['today_page_views'], 'dashicons-chart-bar'); ?>
 					<?php $this->render_dashboard_metric('Besucher', (int) $stats['today_visitors'], 'dashicons-groups'); ?>
@@ -423,7 +425,7 @@ class Feuer_Cookie_Plugin {
 				<?php $this->render_dashboard_top_pages($stats['today_top_pages']); ?>
 			</div>
 
-			<div class="feuer-cookie-dashboard-panel" data-feuer-cookie-dashboard-panel="week" hidden>
+			<div id="feuer-cookie-dashboard-panel-week" class="feuer-cookie-dashboard-panel" role="tabpanel" aria-labelledby="feuer-cookie-dashboard-tab-week" tabindex="0" data-feuer-cookie-dashboard-panel="week" hidden>
 				<div class="feuer-cookie-dashboard-metrics">
 					<?php $this->render_dashboard_metric('Aufrufe', (int) $stats['week_page_views'], 'dashicons-chart-line'); ?>
 					<?php $this->render_dashboard_metric('Besucher', (int) $stats['week_visitors'], 'dashicons-admin-users'); ?>
@@ -432,7 +434,7 @@ class Feuer_Cookie_Plugin {
 				<p class="feuer-cookie-dashboard-note">Zeitraum: letzte 7 Tage, Robots ausgeschlossen.</p>
 			</div>
 
-			<div class="feuer-cookie-dashboard-panel" data-feuer-cookie-dashboard-panel="cookie" hidden>
+			<div id="feuer-cookie-dashboard-panel-cookie" class="feuer-cookie-dashboard-panel" role="tabpanel" aria-labelledby="feuer-cookie-dashboard-tab-cookie" tabindex="0" data-feuer-cookie-dashboard-panel="cookie" hidden>
 				<div class="feuer-cookie-dashboard-metrics">
 					<?php $this->render_dashboard_metric('Bestaetigt', (int) $stats['week_consent_optional'], 'dashicons-yes'); ?>
 					<?php $this->render_dashboard_metric('Nur erforderlich', (int) $stats['week_consent_necessary'], 'dashicons-lock'); ?>
@@ -441,7 +443,7 @@ class Feuer_Cookie_Plugin {
 				<p class="feuer-cookie-dashboard-note">Letzte Cookie-Entscheidung: <strong><?php echo esc_html((string) $stats['last_consent']); ?></strong></p>
 			</div>
 
-			<div class="feuer-cookie-dashboard-panel" data-feuer-cookie-dashboard-panel="status" hidden>
+			<div id="feuer-cookie-dashboard-panel-status" class="feuer-cookie-dashboard-panel" role="tabpanel" aria-labelledby="feuer-cookie-dashboard-tab-status" tabindex="0" data-feuer-cookie-dashboard-panel="status" hidden>
 				<div class="feuer-cookie-dashboard-status">
 					<p><span class="dashicons dashicons-database" aria-hidden="true"></span> Tabellen: <strong><?php echo $stats['tables_ok'] ? 'OK' : 'Pruefen'; ?></strong></p>
 					<p><span class="dashicons dashicons-admin-network" aria-hidden="true"></span> Realtime 15 Min.: <strong><?php echo esc_html(number_format_i18n((int) $stats['active_15m'])); ?></strong></p>
@@ -655,7 +657,6 @@ class Feuer_Cookie_Plugin {
 		return array(
 			'ajaxUrl'         => admin_url('admin-ajax.php'),
 			'nonce'           => wp_create_nonce('feuer_cookie_consent'),
-			'statsNonce'      => wp_create_nonce('feuer_cookie_stats'),
 			'currentUrl'      => $this->current_url(),
 			'acceptLabel'     => $settings['accept_label'],
 			'declineLabel'    => $settings['decline_label'],
@@ -667,7 +668,6 @@ class Feuer_Cookie_Plugin {
 			'consentState'    => $this->get_consent_state(),
 			'consentRecord'   => $consent_record,
 			'demoMode'        => $this->is_demo_mode_active(),
-			'statisticsEnabled' => $this->has_vendor_consent('feuer_cookie_statistics'),
 			'gtmConsentMode'  => ! empty($settings['gtm_consent_mode']),
 			'gtmConsent'      => $this->get_gtm_consent_payload(),
 			'localStorageKey' => 'feuer-cookie:' . $this->get_cookie_name('consent') . ':record',
@@ -796,7 +796,7 @@ class Feuer_Cookie_Plugin {
 		$position = 'header' === $position ? 'header' : 'footer';
 		$html     = "<!-- Feuer-Cookie {$position} Makro -->\n";
 
-		if (! $this->should_handle_frontend_request() || $this->is_admin_bypass_active() || $this->is_robot_request()) {
+		if (! $this->should_handle_frontend_request() || is_user_logged_in() || $this->is_admin_bypass_active() || $this->is_robot_request()) {
 			return $html;
 		}
 
@@ -807,11 +807,6 @@ class Feuer_Cookie_Plugin {
 					esc_url(FEUER_COOKIE_URL . 'assets/css/frontend.css?ver=' . FEUER_COOKIE_VERSION)
 				);
 			}
-
-			$html .= sprintf(
-				'<meta name="feuer-cookie-tracking" content="%s">' . "\n",
-				esc_attr(get_bloginfo('name'))
-			);
 
 			return $html;
 		}
@@ -879,21 +874,20 @@ class Feuer_Cookie_Plugin {
 			case 'privacy':
 				$cookie_name                    = sanitize_key(wp_unslash($_POST['cookie_name'] ?? 'feuer_cookie_consent'));
 				$settings['cookie_name']        = $cookie_name ? $cookie_name : 'feuer_cookie_consent';
-				$settings['retention_days']     = max(7, min(365, (int) ($_POST['retention_days'] ?? 35)));
-				$settings['daily_stats_retention_days'] = max(30, min(1825, (int) ($_POST['daily_stats_retention_days'] ?? 365)));
 				$settings['consent_event_retention_days'] = max(30, min(1825, (int) ($_POST['consent_event_retention_days'] ?? 365)));
+				$settings['analytics_retention_days'] = max(30, min(365, (int) ($_POST['analytics_retention_days'] ?? 90)));
 				$settings['consent_cookie_days'] = max(1, min(3650, (int) ($_POST['consent_cookie_days'] ?? 365)));
 				$settings['overlay_opacity']    = $this->sanitize_overlay_opacity($_POST['overlay_opacity'] ?? 40);
 				$settings['blocking_mode']      = $this->sanitize_blocking_mode(wp_unslash($_POST['blocking_mode'] ?? 'strict'));
 				$settings['gtm_consent_mode']   = ! empty($_POST['gtm_consent_mode']) ? 1 : 0;
-				$settings['store_full_ip']      = ! empty($_POST['store_full_ip']) ? 1 : 0;
+				$settings['feuer_analytics_sync'] = ! empty($_POST['feuer_analytics_sync']) ? 1 : 0;
 				$settings['admin_bypass']       = ! empty($_POST['admin_bypass']) ? 1 : 0;
 				break;
 		}
 
 		$settings['show_reopen_button']  = 1;
 		$settings['demo_mode']           = ! empty($_POST['demo_mode']) ? 1 : 0;
-		unset($settings['decline_title'], $settings['decline_text'], $settings['alternative_url']);
+		unset($settings['decline_title'], $settings['decline_text'], $settings['alternative_url'], $settings['daily_stats_retention_days'], $settings['retention_days'], $settings['store_full_ip']);
 
 		update_option($this->settings_key, $settings);
 		$this->maybe_append_revision_log($previous_settings, $settings);
@@ -1151,6 +1145,58 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
+	 * Export consent-based analytics as grouped CSV rows without visitor IDs.
+	 *
+	 * @return void
+	 */
+	public function handle_analytics_export() {
+		global $wpdb;
+
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('Keine Berechtigung.', 'feuer-cookie'));
+		}
+
+		check_admin_referer('feuer_cookie_export_analytics');
+		$days = isset($_GET['days']) ? absint(wp_unslash($_GET['days'])) : 30;
+		$days = in_array($days, array(7, 30, 90), true) ? $days : 30;
+		$now = current_time('timestamp');
+		$since = wp_date('Y-m-d H:i:s', $now - ($days * DAY_IN_SECONDS));
+		$table = $this->table_sql('events');
+		$sections = array(
+			'Tagesverlauf' => "SELECT DATE(created_at) AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s GROUP BY DATE(created_at) ORDER BY label ASC",
+			'Seiten' => "SELECT request_path AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s GROUP BY request_path ORDER BY views DESC LIMIT 100",
+			'Herkunftsdomains' => "SELECT referrer_path AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND referrer_path <> '' AND created_at >= %s GROUP BY referrer_path ORDER BY sessions DESC LIMIT 100",
+			'Geräte' => "SELECT device_type AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND device_type <> '' AND created_at >= %s GROUP BY device_type ORDER BY sessions DESC",
+			'Browser' => "SELECT browser_name AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND browser_name <> '' AND created_at >= %s GROUP BY browser_name ORDER BY sessions DESC",
+			'Betriebssysteme' => "SELECT os_name AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS sessions FROM {$table} WHERE request_type = 'page_view' AND os_name <> '' AND created_at >= %s GROUP BY os_name ORDER BY sessions DESC",
+		);
+
+		nocache_headers();
+		header('Content-Type: text/csv; charset=utf-8');
+		header('Content-Disposition: attachment; filename="feuer-cookie-statistik-' . $days . '-tage-' . wp_date('Y-m-d') . '.csv"');
+		$output = fopen('php://output', 'w');
+		fwrite($output, "\xEF\xBB\xBF");
+		fputcsv($output, array('Bereich', 'Eintrag', 'Seitenaufrufe', 'Besucher-Sitzungen'), ';');
+
+		foreach ($sections as $section => $sql) {
+			$rows = $wpdb->get_results($wpdb->prepare($sql, $since), ARRAY_A);
+
+			foreach ((array) $rows as $row) {
+				$label = (string) ($row['label'] ?? '');
+
+				if (preg_match('/^[=+\-@\t\r]/', $label)) {
+					$label = "'" . $label;
+				}
+
+				fputcsv($output, array($section, $label, (int) ($row['views'] ?? 0), (int) ($row['sessions'] ?? 0)), ';');
+			}
+		}
+
+		fclose($output);
+		exit;
+	}
+
+	/**
 	 * Clean old raw logs.
 	 *
 	 * @return void
@@ -1159,12 +1205,10 @@ class Feuer_Cookie_Plugin {
 		global $wpdb;
 
 		$settings       = $this->get_settings();
-		$retention_days = max(7, (int) $settings['retention_days']);
 		$consent_days   = max(30, (int) ($settings['consent_event_retention_days'] ?? 365));
-		$daily_days     = max(30, (int) ($settings['daily_stats_retention_days'] ?? 365));
-		$cutoff         = gmdate('Y-m-d H:i:s', time() - (DAY_IN_SECONDS * $retention_days));
 		$consent_cutoff = gmdate('Y-m-d H:i:s', time() - (DAY_IN_SECONDS * $consent_days));
-		$daily_cutoff   = gmdate('Y-m-d', time() - (DAY_IN_SECONDS * $daily_days));
+		$analytics_days = max(30, min(365, (int) ($settings['analytics_retention_days'] ?? 90)));
+		$analytics_cutoff = gmdate('Y-m-d H:i:s', time() - (DAY_IN_SECONDS * $analytics_days));
 		$events_table   = $this->table_sql('events');
 		$daily_stats_table = $this->table_sql('daily_stats');
 
@@ -1172,26 +1216,25 @@ class Feuer_Cookie_Plugin {
 			$wpdb->prepare(
 				"DELETE FROM {$events_table}
 				WHERE created_at < %s
-					AND request_type NOT IN ('consent_accept_all', 'consent_custom', 'consent_necessary', 'consent_service_allow', 'consent_deleted')",
-				$cutoff
-			)
-		);
-
-		$wpdb->query(
-			$wpdb->prepare(
-				"DELETE FROM {$events_table}
-				WHERE created_at < %s
-					AND request_type IN ('consent_accept_all', 'consent_custom', 'consent_necessary', 'consent_service_allow', 'consent_deleted')",
+					AND request_type IN ('consent_accept_all', 'consent_custom', 'consent_necessary', 'consent_service_allow', 'consent_deleted', 'blocked_ip')",
 				$consent_cutoff
 			)
 		);
 
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM {$daily_stats_table} WHERE day < %s",
-				$daily_cutoff
+				"DELETE FROM {$events_table} WHERE request_type IN ('page_view', 'page_engagement') AND created_at < %s",
+				$analytics_cutoff
 			)
 		);
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$daily_stats_table} WHERE day < %s",
+				wp_date('Y-m-d', time() - (DAY_IN_SECONDS * $analytics_days))
+			)
+		);
+
 	}
 
 	/**
@@ -1219,14 +1262,90 @@ class Feuer_Cookie_Plugin {
 			$this->render_gate_template('blocked');
 		}
 
-		if ('configured' === $this->get_consent_state()) {
-			$session_token = sanitize_text_field(wp_unslash($_COOKIE[ $this->get_cookie_name('session') ] ?? ''));
+	}
 
-			if ($session_token && $this->consume_recent_logged_page_view($session_token, $this->current_path())) {
-				return;
+	/**
+	 * Store a minimal page view only after explicit statistics consent.
+	 * No IP address, full URL, query string or raw user agent is retained.
+	 *
+	 * @return void
+	 */
+	public function maybe_track_analytics_page_view() {
+		if (! $this->should_handle_frontend_request() || $this->is_admin_bypass_active() || $this->is_robot_request()) {
+			return;
+		}
+
+		$cookie_name = 'feuer_cookie_analytics_session';
+
+		if ('configured' !== $this->get_consent_state() || ! $this->has_category_consent('statistics') || $this->is_demo_mode_active()) {
+			if (isset($_COOKIE[ $cookie_name ])) {
+				setcookie($cookie_name, '', array('expires' => time() - HOUR_IN_SECONDS, 'path' => COOKIEPATH ? COOKIEPATH : '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax'));
+				unset($_COOKIE[ $cookie_name ]);
 			}
 
-			$this->log_page_view();
+			return;
+		}
+
+		$path = substr(sanitize_text_field($this->current_path()), 0, 191);
+
+		if (! $path) {
+			return;
+		}
+
+		$visitor_token = sanitize_text_field(wp_unslash($_COOKIE[ $cookie_name ] ?? ''));
+
+		if (! preg_match('/^[a-f0-9]{64}$/', $visitor_token)) {
+			$visitor_token = bin2hex(random_bytes(32));
+		}
+
+		setcookie(
+			$cookie_name,
+			$visitor_token,
+			array('expires' => time() + (30 * MINUTE_IN_SECONDS), 'path' => COOKIEPATH ? COOKIEPATH : '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax')
+		);
+		$_COOKIE[ $cookie_name ] = $visitor_token;
+
+		$user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
+		$profile    = $this->parse_client_profile($user_agent);
+		$referrer   = isset($_SERVER['HTTP_REFERER']) ? esc_url_raw(wp_unslash($_SERVER['HTTP_REFERER'])) : '';
+		$ref_host   = strtolower((string) wp_parse_url($referrer, PHP_URL_HOST));
+		$site_host  = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+		$ref_host   = preg_replace('/^www\./', '', $ref_host);
+		$site_host  = preg_replace('/^www\./', '', $site_host);
+		$source     = $ref_host && $ref_host !== $site_host ? substr(sanitize_text_field($ref_host), 0, 191) : '';
+		$visitor_id = hash_hmac('sha256', $visitor_token, wp_salt('auth'));
+
+		global $wpdb;
+		$inserted = $wpdb->insert(
+			$this->tables['events'],
+			array(
+				'session_token' => $visitor_id,
+				'consent_state' => 'configured',
+				'request_type'  => 'page_view',
+				'request_url'   => '',
+				'request_path'  => $path,
+				'referrer_url'  => '',
+				'referrer_path' => $source,
+				'page_title'    => '',
+				'ip_address'    => '',
+				'ip_hash'       => '',
+				'user_agent'    => '',
+				'browser_lang'  => '',
+				'country_code'  => '',
+				'country_name'  => '',
+				'city'          => '',
+				'device_type'   => (string) $profile['device_type'],
+				'browser_name'  => (string) $profile['browser_name'],
+				'os_name'       => (string) $profile['os_name'],
+				'is_robot'      => 0,
+				'meta_json'     => '',
+				'created_at'    => current_time('mysql'),
+			),
+			array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s')
+		);
+
+		if (false !== $inserted) {
+			$this->increment_daily_stats('page_view', $visitor_id);
 		}
 	}
 
@@ -1263,10 +1382,7 @@ class Feuer_Cookie_Plugin {
 					</div>
 					<div class="feuer-cookie-banner__intro">
 						<div class="d-flex flex-wrap align-items-center gap-2">
-							<span class="feuer-cookie-banner__eyebrow badge rounded-pill text-bg-light border">Cookie-Einstellungen</span>
-							<?php if (! empty($settings['consent_revision'])) : ?>
-								<span class="badge rounded-pill text-bg-light border">Revision <?php echo esc_html((string) $settings['consent_revision']); ?></span>
-							<?php endif; ?>
+							<span class="feuer-cookie-banner__eyebrow badge rounded-pill">Ihre Datenschutzauswahl</span>
 						</div>
 						<h2 id="feuer-cookie-banner-title" class="feuer-cookie-banner__title h5 mb-0"><?php echo esc_html($settings['agreement_title']); ?></h2>
 						<div class="feuer-cookie-banner__summary">
@@ -1280,7 +1396,7 @@ class Feuer_Cookie_Plugin {
 						</details>
 						<div class="feuer-cookie-banner__links small">
 						<?php if (! empty($settings['privacy_url'])) : ?>
-							<a href="<?php echo esc_url($settings['privacy_url']); ?>">Datenschutzerklaerung</a>
+							<a href="<?php echo esc_url($settings['privacy_url']); ?>">Datenschutzerklärung</a>
 						<?php endif; ?>
 						<?php if (! empty($settings['imprint_url'])) : ?>
 							<a href="<?php echo esc_url($settings['imprint_url']); ?>">Impressum</a>
@@ -1294,7 +1410,7 @@ class Feuer_Cookie_Plugin {
 					</div>
 
 					<div class="feuer-cookie-banner__actions d-flex flex-wrap gap-2 mt-3">
-						<button type="button" class="feuer-cookie-button feuer-cookie-button--secondary btn btn-outline-secondary btn-sm" data-feuer-cookie-toggle-settings>
+						<button type="button" class="feuer-cookie-button feuer-cookie-button--secondary btn btn-outline-secondary btn-sm" data-feuer-cookie-toggle-settings aria-expanded="false">
 							<?php echo esc_html($settings['settings_label']); ?>
 						</button>
 						<button type="button" class="feuer-cookie-button feuer-cookie-button--secondary btn btn-outline-secondary btn-sm" data-feuer-cookie-decision="necessary">
@@ -1337,6 +1453,7 @@ class Feuer_Cookie_Plugin {
 		$button_icon   = $this->sanitize_panel_button_icon((string) ($settings['panel_button_icon'] ?? 'cookie'));
 		$button_position = $this->sanitize_panel_button_position((string) ($settings['panel_button_position'] ?? 'bottom-right'));
 		$panel_id      = function_exists('wp_unique_id') ? wp_unique_id('feuer-cookie-reopen-panel-') : 'feuer-cookie-reopen-panel';
+		$panel_title_id = $panel_id . '-title';
 
 		if (! $this->should_handle_frontend_request() || $this->is_admin_bypass_active()) {
 			return '';
@@ -1365,8 +1482,14 @@ class Feuer_Cookie_Plugin {
 				<span class="feuer-cookie-sr-only"><?php echo esc_html($settings['reopen_label']); ?></span>
 				<?php echo $this->get_panel_button_icon_svg($button_icon); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 			</button>
-			<div id="<?php echo esc_attr($panel_id); ?>" class="feuer-cookie-reopen__panel card border-0 shadow-lg" role="dialog" aria-label="<?php echo esc_attr($settings['reopen_label']); ?>" hidden>
-				<p><strong>Feuer-Cookie</strong><br><?php echo esc_html__('Ihre Auswahl kann jederzeit geaendert, eingeschraenkt oder erweitert werden.', 'feuer-cookie'); ?></p>
+			<div id="<?php echo esc_attr($panel_id); ?>" class="feuer-cookie-reopen__panel card border-0 shadow-lg" role="dialog" aria-modal="true" aria-labelledby="<?php echo esc_attr($panel_title_id); ?>" hidden>
+				<div class="feuer-cookie-reopen__header">
+					<h2 id="<?php echo esc_attr($panel_title_id); ?>" class="feuer-cookie-reopen__title"><?php echo esc_html__('Cookie-Einstellungen', 'feuer-cookie'); ?></h2>
+					<button type="button" class="feuer-cookie-reopen__close" data-feuer-cookie-close aria-label="<?php echo esc_attr__('Einstellungen schließen', 'feuer-cookie'); ?>">
+						<span aria-hidden="true">&times;</span>
+					</button>
+				</div>
+				<p class="feuer-cookie-reopen__description"><?php echo esc_html__('Sie können Ihre Auswahl jederzeit ändern.', 'feuer-cookie'); ?></p>
 				<?php echo $this->get_consent_matrix_markup($preferences, 'panel'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 			</div>
 		</div>
@@ -1523,7 +1646,7 @@ class Feuer_Cookie_Plugin {
 
 			<?php if ('banner' !== $context) : ?>
 				<div class="feuer-cookie-consent__legal">
-					<p><strong>Ihre Kontrolle:</strong> Statistik, Karten, externe Medien und Marketing werden nur fuer die von Ihnen ausgewaehlten Dienste freigeschaltet.</p>
+					<p><strong>Ihre Kontrolle:</strong> Karten, externe Medien und Marketing werden nur fuer die von Ihnen ausgewaehlten Dienste freigeschaltet.</p>
 					<p><strong>Widerruf:</strong> Ihre Auswahl kann jederzeit ueber das Cookie-Symbol angepasst oder widerrufen werden.</p>
 				</div>
 			<?php endif; ?>
@@ -1557,12 +1680,9 @@ class Feuer_Cookie_Plugin {
 
 		$decision    = sanitize_key(wp_unslash($_POST['decision'] ?? ''));
 		$current_url = esc_url_raw(wp_unslash($_POST['current_url'] ?? home_url('/')));
-		$page_title  = sanitize_text_field(wp_unslash($_POST['page_title'] ?? ''));
-		$referrer_url = esc_url_raw(wp_unslash($_POST['referrer_url'] ?? ''));
 		$raw_payload = wp_unslash($_POST['preferences'] ?? '');
 		$service_id  = sanitize_key(wp_unslash($_POST['service'] ?? ''));
 		$preferences = $this->sanitize_preferences($this->decode_preferences_payload($raw_payload));
-		$event_context = $this->build_event_context_from_url($current_url, $page_title, $referrer_url);
 
 		if (! in_array($decision, array('necessary', 'accept_all', 'save_selection', 'allow_service', 'delete_consent'), true)) {
 			wp_send_json_error(array('message' => 'Ungültige Entscheidung.'), 400);
@@ -1571,7 +1691,7 @@ class Feuer_Cookie_Plugin {
 		$privacy_acknowledged = 'delete_consent' !== $decision;
 
 		if ('delete_consent' === $decision) {
-			$this->log_event('consent_deleted', 'unknown', array('deleted_at' => current_time('mysql')), $event_context);
+			$this->log_event('consent_deleted', 'unknown', array('deleted_at' => current_time('mysql')));
 			$this->clear_consent_storage(true);
 
 			wp_send_json_success(
@@ -1630,11 +1750,8 @@ class Feuer_Cookie_Plugin {
 			);
 		}
 
-		$session_token = $this->ensure_session_token();
 		$this->store_consent_record($record);
-		$this->log_event($event_type, 'configured', $record, $event_context);
-		$this->log_page_view($event_context);
-		$this->mark_recent_logged_page_view($session_token, (string) ($event_context['request_path'] ?? $this->path_from_url($current_url)));
+		$this->log_event($event_type, 'configured', $record);
 		$redirect = $this->sanitize_redirect_url($current_url, home_url('/'));
 
 		wp_send_json_success(
@@ -1646,55 +1763,6 @@ class Feuer_Cookie_Plugin {
 				'gtmConsent'    => $this->get_gtm_consent_payload(),
 			)
 		);
-	}
-
-	/**
-	 * Store a client-side page engagement event for analytics dashboards.
-	 *
-	 * @return void
-	 */
-	public function handle_engagement_ajax() {
-		if (! check_ajax_referer('feuer_cookie_stats', 'nonce', false)) {
-			wp_send_json_error(array('message' => 'Ungueltige Statistik-Anfrage.'), 403);
-		}
-
-		if (! $this->has_vendor_consent('feuer_cookie_statistics')) {
-			wp_send_json_error(array('message' => 'Statistik nicht freigegeben.'), 403);
-		}
-
-		$current_url     = esc_url_raw(wp_unslash($_POST['current_url'] ?? home_url('/')));
-		$page_title      = sanitize_text_field(wp_unslash($_POST['page_title'] ?? ''));
-		$referrer_url    = esc_url_raw(wp_unslash($_POST['referrer_url'] ?? ''));
-		$duration        = max(1, min(43200, (int) ($_POST['duration'] ?? 0)));
-		$active_duration = max(0, min($duration, (int) ($_POST['active_duration'] ?? 0)));
-		$scroll_depth    = max(0, min(100, (int) ($_POST['scroll_depth'] ?? 0)));
-		$screen_width    = max(0, min(10000, (int) ($_POST['screen_width'] ?? 0)));
-		$screen_height   = max(0, min(10000, (int) ($_POST['screen_height'] ?? 0)));
-		$viewport_width  = max(0, min(10000, (int) ($_POST['viewport_width'] ?? 0)));
-		$viewport_height = max(0, min(10000, (int) ($_POST['viewport_height'] ?? 0)));
-		$pixel_ratio     = max(1, min(8, (float) ($_POST['pixel_ratio'] ?? 1)));
-		$reason          = sanitize_key(wp_unslash($_POST['reason'] ?? 'pagehide'));
-
-		$this->ensure_session_token();
-		$this->log_event(
-			'page_engagement',
-			'configured',
-			array(
-				'duration_seconds' => $duration,
-				'active_seconds'   => $active_duration,
-				'scroll_depth'     => $scroll_depth,
-				'screen_width'     => $screen_width,
-				'screen_height'    => $screen_height,
-				'viewport_width'   => $viewport_width,
-				'viewport_height'  => $viewport_height,
-				'pixel_ratio'      => $pixel_ratio,
-				'reason'           => $reason,
-				'captured_at'      => current_time('mysql'),
-			),
-			$this->build_event_context_from_url($current_url, $page_title, $referrer_url)
-		);
-
-		wp_send_json_success(array('stored' => true));
 	}
 
 	/**
@@ -2094,6 +2162,7 @@ class Feuer_Cookie_Plugin {
 	 */
 	public function get_settings() {
 		$settings = wp_parse_args((array) get_option($this->settings_key, array()), $this->get_default_settings());
+		$settings['banner_layout'] = $this->sanitize_banner_layout((string) $settings['banner_layout']);
 		$delete_label = (string) ($settings['delete_label'] ?? '');
 
 		if ('Einwilligung loeschen' !== $delete_label && false !== strpos($delete_label, 'Einwilligung l') && false !== strpos($delete_label, 'schen')) {
@@ -2136,14 +2205,13 @@ class Feuer_Cookie_Plugin {
 			'imprint_url'         => home_url('/impressum/'),
 			'support_url'         => FEUER_COOKIE_HOME_URL,
 			'cookie_name'         => 'feuer_cookie_consent',
-			'retention_days'      => 35,
-			'daily_stats_retention_days' => 365,
 			'consent_event_retention_days' => 365,
+			'analytics_retention_days' => 90,
 			'consent_cookie_days' => 365,
 			'overlay_opacity'     => 40,
 			'blocking_mode'       => 'strict',
 			'gtm_consent_mode'    => 1,
-			'store_full_ip'       => 0,
+			'feuer_analytics_sync' => 0,
 			'admin_bypass'        => 1,
 			'show_reopen_button'  => 1,
 			'demo_mode'           => 0,
@@ -2168,9 +2236,9 @@ class Feuer_Cookie_Plugin {
 			'side-left'            => 'Seitlich links',
 			'side-right'           => 'Seitlich rechts',
 			'center-compact'       => 'Kompakt zentriert',
-			'cookiekit-dark'       => 'CookieKit: Dunkle Leiste',
-			'cookiekit-toast'      => 'CookieKit: Kompakter Toast',
-			'cookiekit-light'      => 'CookieKit: Helle Akzentkarte',
+			'feuer-dark-bar'       => 'Dunkle Leiste',
+			'feuer-compact-toast'  => 'Kompakter Toast',
+			'feuer-light-card'     => 'Helle Akzentkarte',
 		);
 	}
 
@@ -2367,7 +2435,7 @@ class Feuer_Cookie_Plugin {
 	 * @return string
 	 */
 	private function default_agreement_text() {
-		return '<p>Wir verwenden notwendige Cookies sowie nach Ihrer Auswahl optionale Dienste für Karten und externe Inhalte. Sie können alle akzeptieren, ablehnen oder Ihre Auswahl individuell festlegen.</p><p>Weitere Informationen finden Sie in unserer Datenschutzerklärung. Alle nicht erforderlichen Kategorien bleiben standardmäßig deaktiviert, bis Sie aktiv zustimmen.</p>';
+		return '<p>Wir verwenden notwendige Funktionen sowie nach Ihrer Auswahl optionale Statistik, Karten und externe Inhalte. Sie können alle akzeptieren, ablehnen oder Ihre Auswahl individuell festlegen.</p><p>Weitere Informationen finden Sie in unserer Datenschutzerklärung. Alle nicht erforderlichen Kategorien bleiben standardmäßig deaktiviert, bis Sie aktiv zustimmen.</p>';
 	}
 
 	/**
@@ -2402,7 +2470,7 @@ class Feuer_Cookie_Plugin {
 			),
 			'statistics'     => array(
 				'label'       => 'Statistik',
-				'description' => 'Optionale Reichweitenmessung, lokale Besuchsstatistik und Auswertung von Seitenaufrufen.',
+				'description' => 'Anonyme Reichweitenmessung dieser Website und optionale externe Statistikdienste.',
 				'required'    => false,
 			),
 			'external_media' => array(
@@ -2454,11 +2522,11 @@ class Feuer_Cookie_Plugin {
 				'label'        => 'Feuer-Cookie Statistik',
 				'category'     => 'statistics',
 				'provider'     => get_bloginfo('name'),
-				'purpose'      => 'Lokale Reichweitenmessung, Seitenaufrufe, Referrer und Übergänge innerhalb der Website.',
+				'purpose'      => 'Pseudonymisierte Reichweitenmessung innerhalb dieser Website.',
+				'description'  => 'Erfasst Seitenpfade, externe Herkunftsdomains sowie grobe Geräte- und Browsergruppen. Nur nach Ihrer ausdrücklichen Freigabe; IP-Adressen, vollständige URLs und rohe Browser-Kennungen werden nicht gespeichert. Ein zufälliges Sitzungs-Cookie läuft nach 30 Minuten Inaktivität ab.',
 				'legal_basis'  => '§ 25 Abs. 1 TDDDG, Art. 6 Abs. 1 lit. a DSGVO',
-				'description'  => 'Nur bei Ihrer Einwilligung werden statistische Rohdaten für diese Website gespeichert.',
+				'always_visible' => true,
 				'required'     => false,
-				'detected'     => true,
 			),
 			'leaflet_osm'                  => array(
 				'label'        => 'Leaflet / OpenStreetMap',
@@ -2527,13 +2595,12 @@ class Feuer_Cookie_Plugin {
 				'description'  => 'Nur relevant, wenn die Website tatsächlich externe CDN-Dateien nutzt.',
 				'required'     => false,
 			),
-			'cloudflare_cdn'               => array(
-				'label'        => 'Cloudflare / CDN',
+			'google_recaptcha'             => array(
+				'label'        => 'Google reCAPTCHA',
 				'category'     => 'external_media',
-				'provider'     => 'Cloudflare',
-				'purpose'      => 'Abruf externer Ressourcen über Cloudflare-CDNs.',
-				'legal_basis'  => '§ 25 Abs. 1 TDDDG, Art. 6 Abs. 1 lit. a DSGVO',
-				'description'  => 'Bleibt ohne Einwilligung blockiert.',
+				'provider'     => 'Google',
+				'purpose'      => 'Schutz von Formularen vor automatisiertem Missbrauch.',
+				'description'  => 'Wird nur angezeigt, wenn reCAPTCHA auf der Website tatsächlich eingebunden ist.',
 				'required'     => false,
 			),
 			'unpkg_cdn'                    => array(
@@ -2630,7 +2697,7 @@ class Feuer_Cookie_Plugin {
 		$visible  = array();
 
 		foreach ($base as $slug => $vendor) {
-			if (! empty($vendor['required']) || ! empty($vendor['always_visible']) || 'feuer_cookie_statistics' === $slug || isset($detected[ $slug ])) {
+			if (! empty($vendor['required']) || ! empty($vendor['always_visible']) || isset($detected[ $slug ])) {
 				$visible[ $slug ] = isset($detected[ $slug ]) ? array_merge($vendor, $detected[ $slug ]) : $vendor;
 			}
 		}
@@ -2656,6 +2723,16 @@ class Feuer_Cookie_Plugin {
 		$known    = $this->get_registered_service_definitions();
 
 		foreach ($services as $service) {
+			$service_domain = strtolower((string) ($service['domain'] ?? ''));
+
+			if ('cloudflare.com' === $service_domain || 'cdnjs.cloudflare.com' === $service_domain || str_ends_with($service_domain, '.cloudflare.com')) {
+				continue;
+			}
+
+			if (! $this->is_browser_request_diagnostic_service($service)) {
+				continue;
+			}
+
 			$service_name = (string) ($service['service'] ?? '');
 			$domain       = (string) ($service['domain'] ?? '');
 			$slug         = $this->vendor_slug_from_service($service_name, $domain);
@@ -2684,6 +2761,30 @@ class Feuer_Cookie_Plugin {
 		}
 
 		return $vendors;
+	}
+
+	/**
+	 * Exclude server calls and non-runtime source examples from visitor consent.
+	 *
+	 * @param array<string,mixed> $service Diagnostic record.
+	 * @return bool
+	 */
+	private function is_browser_request_diagnostic_service($service) {
+		$context  = strtolower((string) ($service['execution_context'] ?? ''));
+		$evidence = strtolower((string) ($service['evidence'] ?? ''));
+		$location = '/' . trim(strtolower(str_replace('\\', '/', (string) ($service['location'] ?? ''))), '/') . '/';
+
+		if ('server' === $context || false !== strpos($evidence, 'wp http request') || false !== strpos($evidence, 'curl request')) {
+			return false;
+		}
+
+		foreach (array('/release/', '/version/', '/versions/', '/snippets/', '/node_modules/', '/.git/', '/.svn/') as $segment) {
+			if (false !== strpos($location, $segment)) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -2726,14 +2827,14 @@ class Feuer_Cookie_Plugin {
 				return 'google_analytics';
 			case 'Google Fonts':
 				return 'google_fonts';
+			case 'Google reCAPTCHA':
+				return 'google_recaptcha';
 			case 'YouTube':
 				return 'youtube';
 			case 'Vimeo':
 				return 'vimeo';
 			case 'Font Awesome':
 				return 'font_awesome';
-			case 'Cloudflare/CDN':
-				return 'cloudflare_cdn';
 			case 'unpkg CDN':
 				return 'unpkg_cdn';
 			default:
@@ -2765,9 +2866,14 @@ class Feuer_Cookie_Plugin {
 		}
 
 		$host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+		$path = strtolower((string) wp_parse_url($url, PHP_URL_PATH));
 
 		if (! $host) {
 			return '';
+		}
+
+		if ((false !== strpos($host, 'google.com') || false !== strpos($host, 'recaptcha.net')) && false !== strpos($path, 'recaptcha')) {
+			return 'google_recaptcha';
 		}
 
 		foreach ($this->get_registered_service_definitions() as $service_id => $service) {
@@ -2802,10 +2908,6 @@ class Feuer_Cookie_Plugin {
 
 		if (false !== strpos($host, 'fontawesome.com') || false !== strpos($host, 'kit.fontawesome.com') || false !== strpos($host, 'use.fontawesome.com')) {
 			return 'font_awesome';
-		}
-
-		if (false !== strpos($host, 'cdnjs.cloudflare.com') || false !== strpos($host, 'cloudflare.com')) {
-			return 'cloudflare_cdn';
 		}
 
 		if (false !== strpos($host, 'unpkg.com')) {
@@ -3168,11 +3270,98 @@ class Feuer_Cookie_Plugin {
 	 * @return bool
 	 */
 	public function has_service_consent($service_id) {
+		$service_id = sanitize_key($service_id);
+
+		if ('feuer-analytics' === $service_id && ! $this->is_feuer_analytics_sync_enabled()) {
+			return false;
+		}
+
 		if (! $this->should_evaluate_external_assets()) {
 			return true;
 		}
 
 		return $this->has_vendor_consent($service_id);
+	}
+
+	/**
+	 * Allow the optional Feuer Analytics bridge only after an administrator has
+	 * deliberately enabled it. This prevents a newly activated analytics plugin
+	 * from collecting visits before the service is configured in the CMP.
+	 *
+	 * @return bool
+	 */
+	public function is_feuer_analytics_sync_enabled() {
+		return ! empty($this->get_settings()['feuer_analytics_sync']);
+	}
+
+	/**
+	 * Hide the external analytics service until the optional bridge is enabled.
+	 *
+	 * @param array<string,array<string,mixed>> $services Registered services.
+	 * @return array<string,array<string,mixed>>
+	 */
+	public function filter_feuer_analytics_service($services) {
+		if (! $this->is_feuer_analytics_sync_enabled()) {
+			unset($services['feuer-analytics']);
+		}
+
+		return $services;
+	}
+
+	/**
+	 * Return consent totals for a service without exposing consent records.
+	 *
+	 * This API deliberately returns no session identifiers, request URLs, IP
+	 * addresses, timestamps or preference payloads. Consumers can use it for
+	 * an operational report without becoming a second consent-data store.
+	 *
+	 * @param string $service_id Service identifier.
+	 * @param int    $days       Number of completed/current days to include.
+	 * @return array<string,int|string|bool>
+	 */
+	public function get_consent_report($service_id, $days = 30) {
+		global $wpdb;
+
+		$service_id = sanitize_key($service_id);
+		$days       = max(1, min(365, absint($days)));
+		$since      = wp_date('Y-m-d 00:00:00', current_time('timestamp') - (($days - 1) * DAY_IN_SECONDS));
+		$empty      = array(
+			'service'           => $service_id,
+			'days'              => $days,
+			'available'         => false,
+			'opt_in_events'     => 0,
+			'optional_consents' => 0,
+			'necessary_only'    => 0,
+		);
+
+		if ('feuer-analytics' === $service_id && ! $this->is_feuer_analytics_sync_enabled()) {
+			return $empty;
+		}
+
+		if (! $service_id || ! $this->table_exists('events')) {
+			return $empty;
+		}
+
+		$events_table = $this->table_sql('events');
+		$optional_sql = "request_type IN ('consent_accept_all', 'consent_custom', 'consent_service_allow')";
+		$service_like = '%\"service_id\":\"' . $wpdb->esc_like($service_id) . '\"%';
+
+		$empty['available'] = true;
+		$empty['opt_in_events'] = (int) $wpdb->get_var($wpdb->prepare(
+			"SELECT COUNT(*) FROM {$events_table} WHERE request_type = 'consent_service_allow' AND meta_json LIKE %s AND created_at >= %s",
+			$service_like,
+			$since
+		));
+		$empty['optional_consents'] = (int) $wpdb->get_var($wpdb->prepare(
+			"SELECT COUNT(*) FROM {$events_table} WHERE {$optional_sql} AND created_at >= %s",
+			$since
+		));
+		$empty['necessary_only'] = (int) $wpdb->get_var($wpdb->prepare(
+			"SELECT COUNT(*) FROM {$events_table} WHERE request_type = 'consent_necessary' AND created_at >= %s",
+			$since
+		));
+
+		return $empty;
 	}
 
 	/**
@@ -3506,29 +3695,20 @@ class Feuer_Cookie_Plugin {
 	 * @param string              $type Event type.
 	 * @param string|null         $consent_state Optional override state.
 	 * @param array<string,mixed> $meta Metadata.
-	 * @param array<string,mixed> $context Optional request overrides from frontend tracking.
+	 * @param array<string,mixed> $context Reserved for backward compatibility.
 	 * @return void
 	 */
 	private function log_event($type, $consent_state = null, $meta = array(), $context = array()) {
 		global $wpdb;
 
-		$settings      = $this->get_settings();
 		$ip            = $this->get_client_ip();
 		$session_token = $this->ensure_session_token();
-		$request_url   = ! empty($context['request_url']) ? esc_url_raw((string) $context['request_url']) : $this->current_url();
-		$request_path  = ! empty($context['request_path']) ? (string) $context['request_path'] : $this->current_path();
-		$referrer_url  = ! empty($context['referrer_url']) ? esc_url_raw((string) $context['referrer_url']) : (isset($_SERVER['HTTP_REFERER']) ? esc_url_raw(wp_unslash($_SERVER['HTTP_REFERER'])) : '');
-		$referrer_path = ! empty($context['referrer_path']) ? (string) $context['referrer_path'] : $this->path_from_url($referrer_url);
-		$user_agent    = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
-		$browser_lang  = isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_ACCEPT_LANGUAGE'])) : '';
-		$location      = $this->get_request_location();
-		$client_profile = $this->parse_client_profile($user_agent);
-		$is_robot      = $this->is_robot($user_agent) ? 1 : 0;
-		$ip_address    = ! empty($settings['store_full_ip']) ? $ip : $this->mask_ip($ip);
+		$request_path  = $this->current_path();
+		$request_url   = esc_url_raw(home_url($request_path));
+		$ip_address    = $this->mask_ip($ip);
 		$consent       = $consent_state ? $consent_state : $this->get_consent_state();
-		$page_title    = ! empty($context['page_title']) ? sanitize_text_field((string) $context['page_title']) : (function_exists('wp_get_document_title') ? wp_get_document_title() : '');
 
-		$wpdb->insert(
+		$inserted = $wpdb->insert(
 			$this->tables['events'],
 			array(
 				'session_token' => $session_token,
@@ -3536,29 +3716,30 @@ class Feuer_Cookie_Plugin {
 				'request_type'  => $type,
 				'request_url'   => $request_url,
 				'request_path'  => $request_path,
-				'referrer_url'  => $referrer_url,
-				'referrer_path' => $referrer_path,
-				'page_title'    => $page_title,
+				'referrer_url'  => '',
+				'referrer_path' => '',
+				'page_title'    => '',
 				'ip_address'    => $ip_address,
 				'ip_hash'       => $this->hash_ip($ip),
-				'user_agent'    => $user_agent,
-				'browser_lang'  => $browser_lang,
-				'country_code'  => $location['country_code'],
-				'country_name'  => $location['country_name'],
-				'city'          => $location['city'],
-				'device_type'   => $client_profile['device_type'],
-				'browser_name'  => $client_profile['browser_name'],
-				'os_name'       => $client_profile['os_name'],
-				'is_robot'      => $is_robot,
+				'user_agent'    => '',
+				'browser_lang'  => '',
+				'country_code'  => '',
+				'country_name'  => '',
+				'city'          => '',
+				'device_type'   => '',
+				'browser_name'  => '',
+				'os_name'       => '',
+				'is_robot'      => 0,
 				'meta_json'     => wp_json_encode($meta),
 				'created_at'    => current_time('mysql'),
 			),
 			array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s')
 		);
 
-		if (! $is_robot) {
+		if (false !== $inserted) {
 			$this->increment_daily_stats($type, $session_token);
 		}
+
 	}
 
 	/**
@@ -3573,7 +3754,7 @@ class Feuer_Cookie_Plugin {
 
 		$day             = current_time('Y-m-d');
 		$page_views      = 'page_view' === $type ? 1 : 0;
-		$accepts         = in_array($type, array('consent_accept_all', 'consent_custom'), true) ? 1 : 0;
+		$accepts         = in_array($type, array('consent_accept_all', 'consent_custom', 'consent_service_allow'), true) ? 1 : 0;
 		$declines        = 'consent_necessary' === $type ? 1 : 0;
 		$blocked         = 'blocked_ip' === $type ? 1 : 0;
 		$unique_visitors = 0;
@@ -3635,7 +3816,7 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
-	 * Set a cookie with SameSite=Lax.
+	 * Set a cookie with request-aware transport security and SameSite=Lax.
 	 *
 	 * @param string $name Cookie name.
 	 * @param string $value Cookie value.
@@ -3651,8 +3832,8 @@ class Feuer_Cookie_Plugin {
 			array(
 				'expires'  => $expires,
 				'path'     => COOKIEPATH ? COOKIEPATH : '/',
-				// Consent and session cookies must never be sent over an insecure connection.
-				'secure'   => true,
+				// Secure cookies are accepted only on HTTPS; HTTP sites still need a persistent consent choice.
+				'secure'   => is_ssl(),
 				'httponly' => true,
 				'samesite' => 'Lax',
 			)
@@ -3763,29 +3944,52 @@ class Feuer_Cookie_Plugin {
 	 * @return string
 	 */
 	private function get_client_ip() {
-		$headers = array(
-			'HTTP_CF_CONNECTING_IP',
-			'HTTP_X_FORWARDED_FOR',
-			'HTTP_X_REAL_IP',
-			'REMOTE_ADDR',
-		);
+		$remote_addr = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
 
-		foreach ($headers as $header) {
-			if (empty($_SERVER[ $header ])) {
-				continue;
-			}
-
-			$value = wp_unslash((string) $_SERVER[ $header ]);
-			$parts = array_map('trim', explode(',', $value));
-
-			foreach ($parts as $part) {
-				if (filter_var($part, FILTER_VALIDATE_IP)) {
-					return $part;
-				}
-			}
+		if (! filter_var($remote_addr, FILTER_VALIDATE_IP) || ! $this->is_trusted_proxy($remote_addr)) {
+			return filter_var($remote_addr, FILTER_VALIDATE_IP) ? $remote_addr : '';
 		}
 
-		return '';
+		$forwarded = trim((string) wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+
+		if ('' === $forwarded) {
+			return $remote_addr;
+		}
+
+		$chain = array_values(array_filter(array_map('trim', explode(',', $forwarded)), function ($address) {
+			return (bool) filter_var($address, FILTER_VALIDATE_IP);
+		}));
+		$chain[] = $remote_addr;
+
+		while (count($chain) > 1 && $this->is_trusted_proxy((string) end($chain))) {
+			array_pop($chain);
+		}
+
+		$client_addr = (string) end($chain);
+
+		return filter_var($client_addr, FILTER_VALIDATE_IP) ? $client_addr : $remote_addr;
+	}
+
+	/**
+	 * Check whether an address belongs to a proxy explicitly trusted by the site.
+	 * Configure with the `feuer_cookie_trusted_proxy_ips` filter. Exact IP addresses
+	 * are required; forwarded headers are ignored unless REMOTE_ADDR is trusted.
+	 *
+	 * @param string $ip Proxy address.
+	 * @return bool
+	 */
+	private function is_trusted_proxy($ip) {
+		$trusted_proxies = apply_filters('feuer_cookie_trusted_proxy_ips', array());
+
+		if (! is_array($trusted_proxies)) {
+			return false;
+		}
+
+		$trusted_proxies = array_filter(array_map('trim', array_map('strval', $trusted_proxies)), function ($address) {
+			return (bool) filter_var($address, FILTER_VALIDATE_IP);
+		});
+
+		return in_array($ip, $trusted_proxies, true);
 	}
 
 	/**
@@ -3820,45 +4024,19 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
-	 * Read one HTTP header from the current request.
-	 *
-	 * @param array<int,string> $keys Server keys to try.
-	 * @return string
-	 */
-	private function get_request_header_value($keys) {
-		foreach ($keys as $key) {
-			if (! empty($_SERVER[ $key ])) {
-				return sanitize_text_field(wp_unslash($_SERVER[ $key ]));
-			}
-		}
-
-		return '';
-	}
-
-	/**
-	 * Resolve visitor country and city from proxy/CDN headers when available.
+	 * Resolve country and city from server-configured GeoIP variables only.
 	 *
 	 * @return array<string,string>
 	 */
 	private function get_request_location() {
-		$country_code = strtoupper($this->get_request_header_value(array(
-			'HTTP_CF_IPCOUNTRY',
-			'HTTP_X_VERCEL_IP_COUNTRY',
-			'HTTP_CLOUDFRONT_VIEWER_COUNTRY',
-			'HTTP_X_APPENGINE_COUNTRY',
-			'GEOIP_COUNTRY_CODE',
-		)));
-		$city = $this->get_request_header_value(array(
-			'HTTP_CF_IPCITY',
-			'HTTP_X_VERCEL_IP_CITY',
-			'HTTP_CLOUDFRONT_VIEWER_CITY',
-			'HTTP_X_APPENGINE_CITY',
-			'GEOIP_CITY',
-		));
+		$country_code = strtoupper(sanitize_text_field(wp_unslash((string) ($_SERVER['GEOIP_COUNTRY_CODE'] ?? ''))));
+		$city         = sanitize_text_field(wp_unslash((string) ($_SERVER['GEOIP_CITY'] ?? '')));
 
-		if ('XX' === $country_code || strlen($country_code) > 8) {
+		if (! preg_match('/^[A-Z]{2}$/', $country_code)) {
 			$country_code = '';
 		}
+
+		$city = substr($city, 0, 120);
 
 		return array(
 			'country_code' => $country_code,
@@ -4095,7 +4273,24 @@ class Feuer_Cookie_Plugin {
 	 */
 	private function sanitize_banner_layout($layout) {
 		$allowed = array_keys($this->get_banner_layout_options());
-		return in_array($layout, $allowed, true) ? $layout : 'bottom-right';
+		if (in_array($layout, $allowed, true)) {
+			return $layout;
+		}
+
+		// Older style identifiers end in the same visual variant name.
+		$legacy_variants = array(
+			'-dark'  => 'feuer-dark-bar',
+			'-toast' => 'feuer-compact-toast',
+			'-light' => 'feuer-light-card',
+		);
+
+		foreach ($legacy_variants as $suffix => $replacement) {
+			if (substr($layout, -strlen($suffix)) === $suffix) {
+				return $replacement;
+			}
+		}
+
+		return 'bottom-right';
 	}
 
 	/**
@@ -4125,6 +4320,36 @@ class Feuer_Cookie_Plugin {
 	 * @return void
 	 */
 	public function render_overview_page() {
+		$settings = $this->get_settings();
+		$analytics_active = defined('FEUER_ANALYTICS_VERSION');
+		$analytics_sync   = $this->is_feuer_analytics_sync_enabled();
+		$analytics_report = $analytics_sync ? $this->get_consent_report('feuer-analytics', 30) : array();
+
+		$this->render_admin_header('Cookie-Uebersicht', 'Consent, Dienste und optional einwilligungsbasierte Reichweitenmessung.');
+		?>
+		<div class="feuer-cookie-grid feuer-cookie-grid--three">
+			<div class="feuer-cookie-card"><p class="feuer-cookie-card__label">Modell</p><h3>Opt-in aktiv</h3><p>Optionale Dienste bleiben bis zu einer ausdruecklichen Auswahl blockiert.</p></div>
+			<div class="feuer-cookie-card"><p class="feuer-cookie-card__label">Consent-Revision</p><h3><?php echo esc_html((string) $settings['consent_revision']); ?></h3><p>Eine neue Revision fordert Besucher erneut zur Auswahl auf.</p></div>
+			<div class="feuer-cookie-card"><p class="feuer-cookie-card__label">GTM Consent Mode v2</p><h3><?php echo ! empty($settings['gtm_consent_mode']) ? 'Aktiv' : 'Aus'; ?></h3><p>Google-Speicher bleibt standardmaessig verweigert.</p></div>
+		</div>
+		<div class="feuer-cookie-panel"><h2>Naechste Schritte</h2><p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-analytics')); ?>">Statistik öffnen</a> <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-settings&tab=banner')); ?>">Banner pruefen</a> <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-settings&tab=services')); ?>">Dienste verwalten</a> <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-diagnostics')); ?>">Kompatibilitaet pruefen</a></p></div>
+		<div class="feuer-cookie-panel">
+			<h2>Feuer Analytics</h2>
+			<?php if (! $analytics_sync) : ?>
+				<p>Die Synchronisierung ist ausgeschaltet. Feuer Analytics bleibt über Feuer-Cookie gesperrt.</p>
+				<p><a class="button" href="<?php echo esc_url($this->get_settings_page_url('privacy')); ?>">Synchronisierung einrichten</a></p>
+			<?php elseif (! $analytics_active) : ?>
+				<p>Die Synchronisierung ist aktiviert, aber Feuer Analytics ist nicht aktiv. Es werden keine Besuchsdaten durch dieses Plugin erfasst.</p>
+			<?php else : ?>
+				<p><strong>Synchronisiert und einwilligungsbasiert.</strong> Feuer Analytics erhält ausschließlich die aktuelle Freigabe für den Dienst „Feuer Analytics“.</p>
+				<p>Letzte 30 Tage: <?php echo esc_html(number_format_i18n((int) ($analytics_report['opt_in_events'] ?? 0))); ?> explizite Freigaben, <?php echo esc_html(number_format_i18n((int) ($analytics_report['optional_consents'] ?? 0))); ?> optionale Einwilligungen.</p>
+				<p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=wps_overview_page')); ?>">Gemeinsamen Bericht öffnen</a> <a class="button" href="<?php echo esc_url($this->get_settings_page_url('privacy')); ?>">Synchronisierung verwalten</a></p>
+			<?php endif; ?>
+		</div>
+		<?php
+		$this->render_admin_footer();
+		return;
+
 		global $wpdb;
 
 		$this->render_admin_header('Uebersicht', 'Zentrale Kennzahlen, Besuchstrends und letzte Consent-Ereignisse.');
@@ -4142,7 +4367,6 @@ class Feuer_Cookie_Plugin {
 			FROM {$daily_stats_table}",
 			ARRAY_A
 		);
-
 		$recent_days = $wpdb->get_results(
 			"SELECT * FROM {$daily_stats_table} ORDER BY day DESC LIMIT 14",
 			ARRAY_A
@@ -4600,6 +4824,230 @@ class Feuer_Cookie_Plugin {
 	}
 
 	/**
+	 * Render aggregate, consent-based website analytics.
+	 *
+	 * @return void
+	 */
+	public function render_analytics_page() {
+		global $wpdb;
+
+		$days = isset($_GET['days']) ? absint(wp_unslash($_GET['days'])) : 30;
+		$days = in_array($days, array(7, 30, 90), true) ? $days : 30;
+		$since = wp_date('Y-m-d H:i:s', current_time('timestamp') - ($days * DAY_IN_SECONDS));
+		$table = $this->table_sql('events');
+		$totals = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COUNT(*) AS page_views, COUNT(DISTINCT session_token) AS visitors,
+				COUNT(DISTINCT request_path) AS pages, COUNT(DISTINCT CASE WHEN referrer_path <> '' THEN session_token END) AS referred_visitors
+				FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s",
+				$since
+			),
+			ARRAY_A
+		);
+		$previous_since = wp_date('Y-m-d H:i:s', current_time('timestamp') - ((2 * $days) * DAY_IN_SECONDS));
+		$previous_totals = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COUNT(*) AS page_views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s AND created_at < %s",
+				$previous_since,
+				$since
+			),
+			ARRAY_A
+		);
+		$daily = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DATE(created_at) AS day, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s
+				GROUP BY DATE(created_at) ORDER BY day ASC",
+				$since
+			),
+			ARRAY_A
+		);
+		$top_pages = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT request_path AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND created_at >= %s
+				GROUP BY request_path ORDER BY views DESC LIMIT 10",
+				$since
+			),
+			ARRAY_A
+		);
+		$sources = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT referrer_path AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND referrer_path <> '' AND created_at >= %s
+				GROUP BY referrer_path ORDER BY visitors DESC LIMIT 10",
+			$since
+			),
+			ARRAY_A
+		);
+		$devices = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT device_type AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND device_type <> '' AND created_at >= %s
+				GROUP BY device_type ORDER BY visitors DESC",
+			$since
+			),
+			ARRAY_A
+		);
+		$browsers = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT browser_name AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND browser_name <> '' AND created_at >= %s
+				GROUP BY browser_name ORDER BY visitors DESC",
+				$since
+			),
+			ARRAY_A
+		);
+		$systems = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT os_name AS label, COUNT(*) AS views, COUNT(DISTINCT session_token) AS visitors
+				FROM {$table} WHERE request_type = 'page_view' AND os_name <> '' AND created_at >= %s
+				GROUP BY os_name ORDER BY visitors DESC",
+				$since
+			),
+			ARRAY_A
+		);
+		$export_url = wp_nonce_url(
+			add_query_arg(array('action' => 'feuer_cookie_export_analytics', 'days' => $days), admin_url('admin-post.php')),
+			'feuer_cookie_export_analytics'
+		);
+
+		$this->render_admin_header('Statistik', 'Einwilligungsbasierte Reichweitenmessung mit pseudonymisierten Sitzungen und aggregierten Berichten.');
+		?>
+		<div class="feuer-cookie-panel feuer-cookie-analytics-toolbar">
+			<div>
+				<strong>Zeitraum</strong>
+				<span>Die Erfassung läuft nur nach Freigabe von „Feuer-Cookie Statistik“.</span>
+			</div>
+			<nav aria-label="Statistikzeitraum">
+				<?php foreach (array(7 => '7 Tage', 30 => '30 Tage', 90 => '90 Tage') as $period => $label) : ?>
+					<a class="button <?php echo $days === $period ? 'button-primary' : 'button-secondary'; ?>" href="<?php echo esc_url(add_query_arg(array('page' => 'feuer-cookie-analytics', 'days' => $period), admin_url('admin.php'))); ?>"><?php echo esc_html($label); ?></a>
+				<?php endforeach; ?>
+				<a class="button button-secondary" href="<?php echo esc_url($export_url); ?>">CSV herunterladen</a>
+			</nav>
+		</div>
+
+		<div class="feuer-cookie-grid feuer-cookie-grid--cards feuer-cookie-analytics-kpis">
+			<?php $this->render_stat_card('Seitenaufrufe', number_format_i18n((int) ($totals['page_views'] ?? 0)), $this->get_analytics_delta_hint((int) ($totals['page_views'] ?? 0), (int) ($previous_totals['page_views'] ?? 0))); ?>
+			<?php $this->render_stat_card('Besucher-Sitzungen', number_format_i18n((int) ($totals['visitors'] ?? 0)), '30-Minuten-Sitzungen · ' . $this->get_analytics_delta_hint((int) ($totals['visitors'] ?? 0), (int) ($previous_totals['visitors'] ?? 0))); ?>
+			<?php $this->render_stat_card('Seiten', number_format_i18n((int) ($totals['pages'] ?? 0)), 'Unterschiedliche Seitenpfade.'); ?>
+			<?php $this->render_stat_card('Mit Herkunft', number_format_i18n((int) ($totals['referred_visitors'] ?? 0)), 'Sitzungen mit externer Herkunftsdomain.'); ?>
+		</div>
+
+		<?php if (empty($totals['page_views'])) : ?>
+			<div class="feuer-cookie-panel feuer-cookie-analytics-empty">
+				<h2>Noch keine Statistikdaten</h2>
+				<p>Besucher werden erst gezählt, wenn sie im Cookie-Fenster „Feuer-Cookie Statistik“ ausdrücklich freigeben. Die Freigabe lässt sich jederzeit über das Cookie-Symbol ändern.</p>
+				<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-settings&tab=services')); ?>">Statistik-Dienst prüfen</a>
+			</div>
+		<?php else : ?>
+			<div class="feuer-cookie-grid feuer-cookie-grid--two">
+				<?php $this->render_analytics_trend($daily); ?>
+				<?php $this->render_analytics_breakdown('Beliebte Seiten', $top_pages, 'label', 'views', 'visitors'); ?>
+				<?php $this->render_analytics_breakdown('Externe Herkunftsdomains', $sources, 'label', 'visitors'); ?>
+				<?php $this->render_analytics_breakdown('Geräte', $devices, 'label', 'visitors'); ?>
+				<?php $this->render_analytics_breakdown('Browser', $browsers, 'label', 'visitors'); ?>
+				<?php $this->render_analytics_breakdown('Betriebssysteme', $systems, 'label', 'visitors'); ?>
+			</div>
+		<?php endif; ?>
+
+		<div class="feuer-cookie-panel feuer-cookie-analytics-privacy">
+			<h2>Datensparsame Erfassung</h2>
+			<ul class="feuer-cookie-notes">
+				<li>Keine Aufzeichnung vor ausdrücklicher Statistik-Freigabe; Widerruf stoppt die Erfassung sofort.</li>
+				<li>Eingeloggte Nutzer und erkannte Bots werden nicht als Besucher gezählt.</li>
+				<li>Keine IP-Adresse, vollständige URL, Query-Parameter oder rohen Browser-Kennungen in Statistik-Ereignissen.</li>
+				<li>Besuchersitzungen werden über ein zufälliges, serverseitig gehashtes 30-Minuten-Kennzeichen gezählt.</li>
+				<li>Rohdaten werden nach 90 Tagen automatisch gelöscht.</li>
+			</ul>
+		</div>
+		<?php
+		$this->render_admin_footer();
+	}
+
+	/**
+	 * Describe a current metric against the preceding equal-length period.
+	 *
+	 * @param int $current Current metric.
+	 * @param int $previous Previous period metric.
+	 * @return string
+	 */
+	private function get_analytics_delta_hint($current, $previous) {
+		if (0 === $previous) {
+			return $current > 0 ? 'Neu; kein vorheriger Vergleichswert.' : 'Im Vergleichszeitraum ebenfalls keine Werte.';
+		}
+
+		$change = round((($current - $previous) / $previous) * 100, 1);
+		$sign   = $change > 0 ? '+' : '';
+
+		return $sign . number_format_i18n($change, 1) . '% gegenüber dem Vorzeitraum.';
+	}
+
+	/**
+	 * Render daily page views as a responsive SVG trend.
+	 *
+	 * @param array<int,array<string,mixed>> $rows Daily aggregates.
+	 * @return void
+	 */
+	private function render_analytics_trend($rows) {
+		$series = array();
+
+		foreach ((array) $rows as $row) {
+			$day = (string) ($row['day'] ?? '');
+			$series[] = array(
+				'value'  => (int) ($row['views'] ?? 0),
+				'label'  => $day ? wp_date('d.m', strtotime($day)) : '',
+				'bucket' => $day,
+			);
+		}
+		?>
+		<div class="feuer-cookie-panel feuer-cookie-panel--chart">
+			<div class="feuer-cookie-chart__header">
+				<div><p class="feuer-cookie-chart__eyebrow">Besuchstrend</p><h2>Seitenaufrufe pro Tag</h2><p class="feuer-cookie-chart__subline">Jeder Datenpunkt zählt nur nach Statistik-Freigabe erfasste Aufrufe.</p></div>
+				<div class="feuer-cookie-chart__meta"><?php $this->render_chart_meta_item('Tage mit Daten', number_format_i18n(count($series))); ?></div>
+			</div>
+			<?php $this->render_daily_area_chart($series, ''); ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render a compact ranked list for an analytics dimension.
+	 *
+	 * @param string                   $title Panel title.
+	 * @param array<int,array<string,mixed>> $rows Data rows.
+	 * @param string                   $label_key Label field.
+	 * @param string                   $value_key Numeric field.
+	 * @return void
+	 */
+	private function render_analytics_breakdown($title, $rows, $label_key, $value_key, $secondary_key = '') {
+		$max = 1;
+
+		foreach ((array) $rows as $row) {
+			$max = max($max, (int) ($row[ $value_key ] ?? 0));
+		}
+		?>
+		<div class="feuer-cookie-panel feuer-cookie-analytics-panel">
+			<h2><?php echo esc_html($title); ?></h2>
+			<?php if ($rows) : ?>
+				<ol class="feuer-cookie-analytics-list">
+					<?php foreach ($rows as $row) : ?>
+						<?php $value = (int) ($row[ $value_key ] ?? 0); ?>
+						<li>
+							<div class="feuer-cookie-analytics-list__row"><span><?php echo esc_html((string) ($row[ $label_key ] ?? '')); ?><?php if ($secondary_key) : ?><small><?php echo esc_html(number_format_i18n((int) ($row[ $secondary_key ] ?? 0))); ?> Sitzungen</small><?php endif; ?></span><strong><?php echo esc_html(number_format_i18n($value)); ?></strong></div>
+							<div class="feuer-cookie-analytics-list__track"><span style="width: <?php echo esc_attr((string) max(2, (int) round(($value / $max) * 100))); ?>%"></span></div>
+						</li>
+					<?php endforeach; ?>
+				</ol>
+			<?php else : ?>
+				<p class="description">Für diesen Zeitraum gibt es noch keine Werte.</p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Render visitor page.
 	 *
 	 * @return void
@@ -4709,6 +5157,13 @@ class Feuer_Cookie_Plugin {
 	 * @return void
 	 */
 	public function render_status_page() {
+		$this->render_admin_header('Cookie-Status', 'Technischer Status der Consent-Funktionen und der optionalen Statistik.');
+		?>
+		<div class="feuer-cookie-panel"><p><strong>Cookie-Consent:</strong> aktiv</p><p><strong>Externe Dienste:</strong> werden entsprechend der Auswahl blockiert oder freigegeben.</p><p><strong>Lokale Statistik:</strong> zählt Besuche nur nach ausdrücklicher Freigabe durch den jeweiligen Besucher; IP-Adressen und vollständige URLs werden nicht in Statistikereignissen gespeichert.</p><p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-analytics')); ?>">Statistik öffnen</a> <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=feuer-cookie-settings&tab=privacy')); ?>">Datenschutz-Einstellungen</a></p></div>
+		<?php
+		$this->render_admin_footer();
+		return;
+
 		$health      = $this->get_statistics_health_items();
 		$realtime    = $this->get_realtime_status();
 		$explain     = $this->get_empty_statistics_explanations();
@@ -5347,8 +5802,13 @@ class Feuer_Cookie_Plugin {
 	 */
 	public function render_diagnostics_page() {
 		$report = get_option($this->diagnostics_key, array());
+		$report['services'] = array_values(array_filter((array) ($report['services'] ?? array()), function ($service) {
+			$domain = strtolower((string) ($service['domain'] ?? ''));
 
-		$this->render_admin_header('Diagnose', 'Scan von aktiven Themes, Plugins und veroeffentlichten Inhalten auf externe Dienste.');
+			return ! ('cloudflare.com' === $domain || 'cdnjs.cloudflare.com' === $domain || (strlen($domain) > strlen('.cloudflare.com') && substr($domain, -strlen('.cloudflare.com')) === '.cloudflare.com'));
+		}));
+
+		$this->render_admin_header('Diagnose', 'Statische Suche nach externen Request-Stellen in aktiven Themes, Plugins und veroeffentlichten Inhalten.');
 
 		?>
 		<div class="feuer-cookie-panel">
@@ -5357,14 +5817,14 @@ class Feuer_Cookie_Plugin {
 				<input type="hidden" name="action" value="feuer_cookie_run_diagnostics">
 				<button type="submit" class="button button-primary">Scan starten</button>
 			</form>
-			<p class="description feuer-cookie-diag-note">Gezaehlt werden nur echte Request-Kontexte wie Enqueues, src/href, iframe, fetch/XHR, CSS url() oder tileLayer. Kommentare, einfache Text-Links und rein informative URLs werden ignoriert.</p>
+			<p class="description feuer-cookie-diag-note">Der Scan findet mögliche Request-Stellen im Quellcode; er bestätigt nicht, dass diese zur Laufzeit geladen werden. Serverseitige API-Aufrufe werden als technische Hinweise erfasst und nicht als Cookie-Dienste für Website-Besucher behandelt.</p>
 		</div>
 		<?php if (! empty($report)) : ?>
 			<div class="feuer-cookie-grid feuer-cookie-grid--two">
 				<div class="feuer-cookie-panel">
 					<h2>Scan-Informationen</h2>
 					<p><strong>Zeitpunkt:</strong> <?php echo esc_html((string) $report['generated_at']); ?></p>
-					<p><strong>Modus:</strong> Nur aktive Request-Kontexte</p>
+					<p><strong>Modus:</strong> Statische Quellcodeanalyse</p>
 					<p><strong>Treffer:</strong> <?php echo esc_html(number_format_i18n((int) ($report['record_count'] ?? 0))); ?></p>
 					<?php if (! empty($report['active_theme'])) : ?>
 						<p><strong>Aktives Theme:</strong> <?php echo esc_html($report['active_theme']['name'] . ' ' . $report['active_theme']['version']); ?></p>
@@ -5394,13 +5854,14 @@ class Feuer_Cookie_Plugin {
 			</div>
 
 			<div class="feuer-cookie-panel">
-				<h2>Erkannte externe Requests</h2>
+				<h2>Gefundene externe Request-Stellen</h2>
 				<table class="widefat striped">
 					<thead>
 						<tr>
 							<th>Dienst</th>
 							<th>Domain</th>
 							<th>Nachweis</th>
+							<th>Kontext</th>
 							<th>Fundort</th>
 							<th>Empfehlung</th>
 						</tr>
@@ -5417,6 +5878,7 @@ class Feuer_Cookie_Plugin {
 											<div class="feuer-cookie-diag-context"><code><?php echo esc_html((string) $service['context']); ?></code></div>
 										<?php endif; ?>
 									</td>
+									<td><?php echo ('server' === (string) ($service['execution_context'] ?? '') || in_array((string) ($service['evidence'] ?? ''), array('WP HTTP request', 'cURL request'), true)) ? 'Server (intern)' : 'Browser (möglicherweise)'; ?></td>
 									<td>
 										<?php echo esc_html((string) $service['location']); ?>
 										<?php if (! empty($service['line'])) : ?>
@@ -5427,7 +5889,7 @@ class Feuer_Cookie_Plugin {
 								</tr>
 							<?php endforeach; ?>
 						<?php else : ?>
-							<tr><td colspan="5">Keine externen Requests erkannt.</td></tr>
+							<tr><td colspan="6">Keine externen Request-Stellen erkannt.</td></tr>
 						<?php endif; ?>
 					</tbody>
 				</table>
@@ -5452,7 +5914,7 @@ class Feuer_Cookie_Plugin {
 		$totals = (array) ($report['totals'] ?? array());
 		$rows   = array_slice((array) ($report['rows'] ?? array()), 0, 50);
 
-		$this->render_admin_header('SEO-Audit', 'Lokaler On-Page-Check nach OpenSEO-Coach-Prinzip: erst Kontext, dann priorisierte naechste Schritte.');
+		$this->render_admin_header('SEO-Audit', 'Lokaler On-Page-Check: erst Kontext erfassen, dann naechste Schritte priorisieren.');
 		?>
 		<div class="feuer-cookie-panel">
 			<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -6060,9 +6522,9 @@ class Feuer_Cookie_Plugin {
 			</div>
 			<div class="feuer-cookie-card">
 				<p class="feuer-cookie-card__label">Update-Kanal</p>
-				<h3 class="feuer-cookie-settings-tools__title">Entwicklerseite</h3>
+				<h3 class="feuer-cookie-settings-tools__title">Offizielle Seite</h3>
 				<p class="feuer-cookie-card__hint"><a href="<?php echo esc_url(FEUER_COOKIE_HOME_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html(FEUER_COOKIE_HOME_URL); ?></a></p>
-				<p class="feuer-cookie-card__hint">Der Plugin-Link und der Auto-Update-Kanal zeigen auf die Entwicklerseite von Walter Faerber / wdmin.com.</p>
+				<p class="feuer-cookie-card__hint">Der Plugin-Link und der Auto-Update-Kanal zeigen auf die offizielle Seite von Walter Färber / wdmin.com.</p>
 			</div>
 		</div>
 		<?php
@@ -6279,26 +6741,22 @@ class Feuer_Cookie_Plugin {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="retention_days">Aufbewahrung Rohlogs (Tage)</label></th>
-				<td><input type="number" min="7" max="365" name="retention_days" id="retention_days" value="<?php echo esc_attr((string) $settings['retention_days']); ?>"></td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="consent_event_retention_days">Aufbewahrung Consent Audit (Tage)</label></th>
+						<th scope="row"><label for="consent_event_retention_days">Aufbewahrung Consent- und Sicherheitsereignisse (Tage)</label></th>
 				<td>
 					<input type="number" min="30" max="1825" name="consent_event_retention_days" id="consent_event_retention_days" value="<?php echo esc_attr((string) ($settings['consent_event_retention_days'] ?? 365)); ?>">
 					<p class="description">Consent-Entscheidungen koennen laenger als normale Rohereignisse aufbewahrt werden.</p>
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="daily_stats_retention_days">Aufbewahrung Tagesstatistik (Tage)</label></th>
-				<td>
-					<input type="number" min="30" max="1825" name="daily_stats_retention_days" id="daily_stats_retention_days" value="<?php echo esc_attr((string) ($settings['daily_stats_retention_days'] ?? 365)); ?>">
-					<p class="description">Aggregierte Tageswerte enthalten keine vollstaendigen Rohereignisse und koennen fuer Langzeitvergleiche laenger bleiben.</p>
-				</td>
-			</tr>
-			<tr>
 				<th scope="row"><label for="consent_cookie_days">Laufzeit Consent-Cookie (Tage)</label></th>
 				<td><input type="number" min="1" max="3650" name="consent_cookie_days" id="consent_cookie_days" value="<?php echo esc_attr((string) $settings['consent_cookie_days']); ?>"></td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="analytics_retention_days">Aufbewahrung Statistikdaten (Tage)</label></th>
+				<td>
+					<input type="number" min="30" max="365" name="analytics_retention_days" id="analytics_retention_days" value="<?php echo esc_attr((string) ($settings['analytics_retention_days'] ?? 90)); ?>">
+					<p class="description">Seitenaufrufe und anonyme Sitzungskennungen werden nach diesem Zeitraum automatisch gelöscht.</p>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="overlay_opacity">Hintergrund abdunkeln (%)</label></th>
@@ -6318,12 +6776,15 @@ class Feuer_Cookie_Plugin {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row">Volle IP speichern</th>
-				<td><label><input type="checkbox" name="store_full_ip" value="1" <?php checked($settings['store_full_ip'], 1); ?>> Ja, statt maskierter IP den vollstaendigen Wert im Rohlog speichern.</label></td>
-			</tr>
-			<tr>
 				<th scope="row">Admins umgehen Gate</th>
 				<td><label><input type="checkbox" name="admin_bypass" value="1" <?php checked($settings['admin_bypass'], 1); ?>> Ja, eingeloggte Administratoren sehen die Website ohne Consent-Banner.</label></td>
+			</tr>
+			<tr>
+				<th scope="row">Feuer Analytics synchronisieren</th>
+				<td>
+					<label><input type="checkbox" name="feuer_analytics_sync" value="1" <?php checked(! empty($settings['feuer_analytics_sync'])); ?>> Feuer Analytics als optionalen Statistik-Dienst aktivieren</label>
+					<p class="description">Nur bei aktivierter Synchronisierung wird der Dienst im Banner angeboten. Feuer Analytics erhält ausschließlich die Entscheidung für den aktuellen Aufruf; Cookie-Nachweise, IP-Adressen und Besucherprofile werden nicht übertragen.</p>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row">Cookie-Icon im Frontend</th>
@@ -6336,8 +6797,8 @@ class Feuer_Cookie_Plugin {
 		<div class="feuer-cookie-grid feuer-cookie-grid--two feuer-cookie-settings-notes">
 			<div class="feuer-cookie-card">
 				<p class="feuer-cookie-card__label">Datensparsamkeit</p>
-				<h3 class="feuer-cookie-settings-tools__title">IP-Speicherung bewusst waehlen</h3>
-				<p class="feuer-cookie-card__hint">Standardmaessig werden IP-Adressen maskiert. Vollstaendige IPs sollten nur aktiviert werden, wenn Ihr Einsatzzweck und Ihre Datenschutzdokumentation das sauber abdecken.</p>
+				<h3 class="feuer-cookie-settings-tools__title">Datensparsame Consent-Nachweise</h3>
+				<p class="feuer-cookie-card__hint">Consent-Nachweise speichern ausschließlich eine maskierte IP und keine Besucher-, Geräte-, Standort- oder Referrer-Daten.</p>
 			</div>
 			<div class="feuer-cookie-card">
 				<p class="feuer-cookie-card__label">Betrieb</p>
@@ -7856,7 +8317,7 @@ class Feuer_Cookie_Plugin {
 			case 'seo_audit_run':
 				return 'Der SEO-Audit wurde ausgefuehrt.';
 			case 'update_available':
-				return 'Auf dem Entwickler-Server wurde eine neuere Plugin-Version gefunden. WordPress zeigt das Update jetzt in der Plugin-Verwaltung an.';
+				return 'Auf dem Update-Server wurde eine neuere Plugin-Version gefunden. WordPress zeigt das Update jetzt in der Plugin-Verwaltung an.';
 			case 'update_current':
 				return 'Es wurde erfolgreich nach Updates gesucht. Die installierte Version ist aktuell.';
 			case 'update_check_failed':

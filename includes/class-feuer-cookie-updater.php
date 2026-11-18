@@ -11,6 +11,9 @@ if (! defined('ABSPATH')) {
 
 class Feuer_Cookie_Updater {
 
+	const PACKAGE_HASH_ALGORITHM = 'sha256';
+	const RELEASE_HOST = 'wdmin.com';
+
 	/**
 	 * Site transient cache key for the remote manifest.
 	 *
@@ -62,11 +65,13 @@ class Feuer_Cookie_Updater {
 	public function __construct($plugin_file, $manifest_url) {
 		$this->plugin_file     = (string) $plugin_file;
 		$this->plugin_basename = plugin_basename($plugin_file);
-		$this->manifest_url    = esc_url_raw((string) $manifest_url);
+		$this->manifest_url    = $this->sanitize_release_url((string) $manifest_url);
 
 		add_filter('pre_set_site_transient_update_plugins', array($this, 'inject_update_metadata'));
 		add_filter('plugins_api', array($this, 'inject_plugin_information'), 20, 3);
 		add_filter('auto_update_plugin', array($this, 'maybe_enable_auto_update'), 20, 2);
+		add_filter('upgrader_pre_download', array($this, 'verify_package'), 10, 4);
+		add_filter('upgrader_source_selection', array($this, 'normalize_source_directory'), 1, 3);
 		add_action('upgrader_process_complete', array($this, 'purge_manifest_cache'), 10, 2);
 		add_action('delete_site_transient_update_plugins', array($this, 'delete_manifest_cache'));
 	}
@@ -91,8 +96,16 @@ class Feuer_Cookie_Updater {
 		$update = $this->build_update_payload($manifest);
 
 		if (version_compare(FEUER_COOKIE_VERSION, (string) $manifest['version'], '<')) {
+			if (! isset($transient->response) || ! is_array($transient->response)) {
+				$transient->response = array();
+			}
+
 			$transient->response[ $this->plugin_basename ] = $update;
 			return $transient;
+		}
+
+		if (! isset($transient->no_update) || ! is_array($transient->no_update)) {
+			$transient->no_update = array();
 		}
 
 		$transient->no_update[ $this->plugin_basename ] = $update;
@@ -136,7 +149,7 @@ class Feuer_Cookie_Updater {
 			'tested'        => (string) $manifest['tested'],
 			'requires_php'  => (string) $manifest['requires_php'],
 			'last_updated'  => (string) $manifest['last_updated'],
-			'download_link' => '',
+			'download_link' => (string) $manifest['package_url'],
 			'sections'      => (array) $manifest['sections'],
 			'banners'       => (array) $manifest['banners'],
 			'icons'         => (array) $manifest['icons'],
@@ -200,8 +213,8 @@ class Feuer_Cookie_Updater {
 	 *
 	 * @return array<string,mixed>
 	 */
-	private function get_manifest() {
-		$cached = get_site_transient($this->cache_key);
+	private function get_manifest($force = false) {
+		$cached = $force ? false : get_site_transient($this->cache_key);
 
 		if (is_array($cached) && ! empty($cached['version'])) {
 			return $cached;
@@ -255,9 +268,13 @@ class Feuer_Cookie_Updater {
 	 * @return array<string,mixed>
 	 */
 	private function normalize_manifest($manifest) {
+		$slug    = sanitize_key((string) ($manifest['slug'] ?? ''));
 		$version = sanitize_text_field((string) ($manifest['version'] ?? ''));
+		$package_url = $this->sanitize_release_url((string) ($manifest['package_url'] ?? ''));
+		$hash = strtolower(preg_replace('/[^a-fA-F0-9]/', '', (string) ($manifest['package_hash'] ?? '')));
+		$algorithm = sanitize_key((string) ($manifest['package_hash_algorithm'] ?? ''));
 
-		if ('' === $version) {
+		if ($this->slug !== $slug || '' === $version || ! $package_url || self::PACKAGE_HASH_ALGORITHM !== $algorithm || 64 !== strlen($hash)) {
 			return array();
 		}
 
@@ -276,12 +293,14 @@ class Feuer_Cookie_Updater {
 		return array(
 			'name'            => sanitize_text_field((string) ($manifest['name'] ?? 'Feuer-Cookie')),
 			'version'         => $version,
-			'homepage'        => esc_url_raw((string) ($manifest['homepage'] ?? FEUER_COOKIE_HOME_URL)),
-			'details_url'     => esc_url_raw((string) ($manifest['details_url'] ?? FEUER_COOKIE_HOME_URL)),
-			'download_url'    => esc_url_raw((string) ($manifest['download_url'] ?? FEUER_COOKIE_HOME_URL)),
-			'package_url'     => esc_url_raw((string) ($manifest['package_url'] ?? '')),
-			'author'          => sanitize_text_field((string) ($manifest['author'] ?? 'Walter Faerber')),
-			'author_homepage' => esc_url_raw((string) ($manifest['author_homepage'] ?? FEUER_COOKIE_AUTHOR_URL)),
+			'homepage'        => $this->sanitize_release_url((string) ($manifest['homepage'] ?? FEUER_COOKIE_HOME_URL)) ?: FEUER_COOKIE_HOME_URL,
+			'details_url'     => $this->sanitize_release_url((string) ($manifest['details_url'] ?? FEUER_COOKIE_HOME_URL)) ?: FEUER_COOKIE_HOME_URL,
+			'download_url'    => $package_url,
+			'package_url'     => $package_url,
+			'package_hash'    => $hash,
+			'package_hash_algorithm' => $algorithm,
+			'author'          => sanitize_text_field((string) ($manifest['author'] ?? 'Walter Färber')),
+			'author_homepage' => $this->sanitize_release_url((string) ($manifest['author_homepage'] ?? FEUER_COOKIE_AUTHOR_URL)) ?: FEUER_COOKIE_AUTHOR_URL,
 			'requires'        => sanitize_text_field((string) ($manifest['requires'] ?? FEUER_COOKIE_MIN_WP_VERSION)),
 			'tested'          => sanitize_text_field((string) ($manifest['tested'] ?? FEUER_COOKIE_MIN_WP_VERSION)),
 			'requires_php'    => sanitize_text_field((string) ($manifest['requires_php'] ?? FEUER_COOKIE_MIN_PHP_VERSION)),
@@ -304,7 +323,7 @@ class Feuer_Cookie_Updater {
 
 		foreach ($images as $size => $url) {
 			$key = sanitize_key((string) $size);
-			$src = esc_url_raw((string) $url);
+			$src = $this->sanitize_release_url((string) $url);
 
 			if ($key && $src) {
 				$normalized[ $key ] = $src;
@@ -312,6 +331,117 @@ class Feuer_Cookie_Updater {
 		}
 
 		return $normalized;
+	}
+
+	/**
+	 * Download the package ourselves so its checksum is verified before WordPress
+	 * extracts it. The manifest and archive must both remain on wdmin.com.
+	 *
+	 * @param mixed       $reply Existing pre-download response.
+	 * @param string      $package Package URL.
+	 * @param WP_Upgrader $upgrader Upgrader instance.
+	 * @param array       $hook_extra Update context.
+	 * @return mixed
+	 */
+	public function verify_package($reply, $package, $upgrader, $hook_extra) {
+		if (false !== $reply && null !== $reply) {
+			return $reply;
+		}
+
+		$plugin  = is_array($hook_extra) ? (string) ($hook_extra['plugin'] ?? '') : '';
+		$plugins = is_array($hook_extra) ? array_map('strval', (array) ($hook_extra['plugins'] ?? array())) : array();
+
+		if ($this->plugin_basename !== $plugin && ! in_array($this->plugin_basename, $plugins, true)) {
+			return $reply;
+		}
+
+		$package_url = $this->sanitize_release_url($package);
+		$manifest    = $this->get_manifest(true);
+
+		if (! $package_url || empty($manifest) || ! hash_equals((string) $manifest['package_url'], $package_url)) {
+			return new WP_Error('feuer_cookie_update_manifest', 'Das Update wurde blockiert: Das Paket stimmt nicht mit dem freigegebenen Manifest überein.');
+		}
+
+		if (self::PACKAGE_HASH_ALGORITHM !== ($manifest['package_hash_algorithm'] ?? '') || 64 !== strlen((string) ($manifest['package_hash'] ?? ''))) {
+			return new WP_Error('feuer_cookie_update_hash_missing', 'Das Update wurde blockiert: Die SHA-256-Prüfsumme fehlt.');
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		$downloaded_file = download_url($package_url, 300);
+
+		if (is_wp_error($downloaded_file)) {
+			return $downloaded_file;
+		}
+
+		$actual_hash = hash_file(self::PACKAGE_HASH_ALGORITHM, $downloaded_file);
+
+		if (! is_string($actual_hash) || ! hash_equals((string) $manifest['package_hash'], strtolower($actual_hash))) {
+			wp_delete_file($downloaded_file);
+			return new WP_Error('feuer_cookie_update_hash_mismatch', 'Das Update wurde blockiert: Die SHA-256-Prüfsumme stimmt nicht.');
+		}
+
+		return $downloaded_file;
+	}
+
+	/**
+	 * Ensure the archive is installed into the stable plugin directory.
+	 *
+	 * @param string      $source Extracted source directory.
+	 * @param string      $remote_source Temporary extraction root.
+	 * @param WP_Upgrader $upgrader Upgrader instance.
+	 * @return string
+	 */
+	public function normalize_source_directory($source, $remote_source, $upgrader) {
+		global $wp_filesystem;
+
+		if (! $wp_filesystem instanceof WP_Filesystem_Base) {
+			return $source;
+		}
+
+		$options = isset($upgrader->skin->options) && is_array($upgrader->skin->options) ? $upgrader->skin->options : array();
+		$plugin  = (string) ($options['plugin'] ?? '');
+
+		if ($plugin && $this->plugin_basename !== $plugin) {
+			return $source;
+		}
+
+		if (! $wp_filesystem->exists(trailingslashit($source) . basename($this->plugin_file))) {
+			return $source;
+		}
+
+		$correct_source = trailingslashit($remote_source) . $this->slug . '/';
+
+		if (trailingslashit($source) === $correct_source) {
+			return $source;
+		}
+
+		return $wp_filesystem->move($source, $correct_source) ? $correct_source : $source;
+	}
+
+	/**
+	 * Restrict release resources to the official HTTPS origin.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return string
+	 */
+	private function sanitize_release_url($url) {
+		$url   = esc_url_raw(trim((string) $url));
+		$parts = wp_parse_url($url);
+		$host  = strtolower((string) ($parts['host'] ?? ''));
+
+		if ('https' !== strtolower((string) ($parts['scheme'] ?? ''))) {
+			return '';
+		}
+
+		if (! in_array($host, array(self::RELEASE_HOST, 'www.' . self::RELEASE_HOST), true)) {
+			return '';
+		}
+
+		if (! empty($parts['user']) || ! empty($parts['pass']) || (isset($parts['port']) && 443 !== (int) $parts['port'])) {
+			return '';
+		}
+
+		return $url;
 	}
 
 	/**

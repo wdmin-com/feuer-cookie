@@ -1,0 +1,45 @@
+name: Plugin quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php-and-js:
+    name: PHP ${{ matrix.php }} and JavaScript checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.0', '8.3', '8.5']
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5.1.0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Lint plugin PHP files
+        shell: bash
+        run: |
+          mapfile -t files < <(find . -path './release' -prune -o -type f -name '*.php' -print)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No PHP files found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            php -l "$file"
+          done
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          node --check assets/js/admin.js
+          node --check assets/js/frontend.js

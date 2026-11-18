@@ -89,11 +89,35 @@
 			var $widget = $button.closest('[data-feuer-cookie-dashboard-widget]');
 			var tab = $button.attr('data-feuer-cookie-dashboard-tab');
 
-			$widget.find('[data-feuer-cookie-dashboard-tab]').removeClass('is-active');
-			$button.addClass('is-active');
+			$widget.find('[data-feuer-cookie-dashboard-tab]')
+				.removeClass('is-active')
+				.attr('aria-selected', 'false')
+				.attr('tabindex', '-1');
+			$button.addClass('is-active').attr('aria-selected', 'true').attr('tabindex', '0');
 
 			$widget.find('[data-feuer-cookie-dashboard-panel]').prop('hidden', true).removeClass('is-active');
 			$widget.find('[data-feuer-cookie-dashboard-panel="' + tab + '"]').prop('hidden', false).addClass('is-active');
+		});
+
+		$('[data-feuer-cookie-dashboard-widget]').on('keydown', '[data-feuer-cookie-dashboard-tab]', function (event) {
+			var $tabs = $(this).closest('[data-feuer-cookie-dashboard-widget]').find('[data-feuer-cookie-dashboard-tab]');
+			var index = $tabs.index(this);
+			var targetIndex = index;
+
+			if ('ArrowRight' === event.key || 'ArrowDown' === event.key) {
+				targetIndex = (index + 1) % $tabs.length;
+			} else if ('ArrowLeft' === event.key || 'ArrowUp' === event.key) {
+				targetIndex = (index - 1 + $tabs.length) % $tabs.length;
+			} else if ('Home' === event.key) {
+				targetIndex = 0;
+			} else if ('End' === event.key) {
+				targetIndex = $tabs.length - 1;
+			} else {
+				return;
+			}
+
+			event.preventDefault();
+			$tabs.eq(targetIndex).trigger('focus').trigger('click');
 		});
 	});
 }(jQuery));

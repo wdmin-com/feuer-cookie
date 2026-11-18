@@ -1,5 +1,7 @@
 (function () {
 	'use strict';
+	var reopenPanelCount = 0;
+	var bodyOverflowBeforeReopen = '';
 
 	function getConsentRoot(element) {
 		if (!element) {
@@ -342,16 +344,44 @@
 
 	function openReopenPanels() {
 		document.querySelectorAll('[data-feuer-cookie-panel]').forEach(function (panel) {
-			var openButton = panel.querySelector('[data-feuer-cookie-open]');
-			var popup = panel.querySelector('.feuer-cookie-reopen__panel');
-
-			if (!openButton || !popup) {
-				return;
-			}
-
-			setElementVisibility(popup, true);
-			openButton.setAttribute('aria-expanded', 'true');
+			setReopenPanelState(panel, true, false);
 		});
+	}
+
+	function setReopenPanelState(panel, expanded, restoreFocus) {
+		var openButton = panel ? panel.querySelector('[data-feuer-cookie-open]') : null;
+		var popup = panel ? panel.querySelector('.feuer-cookie-reopen__panel') : null;
+		var closeButton;
+
+		if (!openButton || !popup) {
+			return;
+		}
+
+		if (expanded && popup.hasAttribute('hidden')) {
+			if (0 === reopenPanelCount) {
+				bodyOverflowBeforeReopen = document.body.style.overflow;
+				document.body.style.overflow = 'hidden';
+			}
+			reopenPanelCount += 1;
+		} else if (!expanded && !popup.hasAttribute('hidden')) {
+			reopenPanelCount = Math.max(0, reopenPanelCount - 1);
+			if (0 === reopenPanelCount) {
+				document.body.style.overflow = bodyOverflowBeforeReopen;
+			}
+		}
+
+		setElementVisibility(popup, expanded);
+		panel.classList.toggle('is-open', !!expanded);
+		openButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+
+		if (expanded) {
+			closeButton = popup.querySelector('[data-feuer-cookie-close]');
+			if (closeButton) {
+				closeButton.focus();
+			}
+		} else if (restoreFocus) {
+			openButton.focus();
+		}
 	}
 
 	function bindSettingsToggles() {
@@ -406,8 +436,14 @@
 			openButton.setAttribute('aria-expanded', 'false');
 
 			openButton.addEventListener('click', function () {
-				expanded = toggleElementVisibility(popup);
-				openButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+				expanded = popup.hasAttribute('hidden');
+				setReopenPanelState(panel, expanded, false);
+			});
+
+			panel.querySelectorAll('[data-feuer-cookie-close]').forEach(function (closeButton) {
+				closeButton.addEventListener('click', function () {
+					setReopenPanelState(panel, false, true);
+				});
 			});
 
 			document.addEventListener('click', function (event) {
@@ -415,145 +451,131 @@
 					return;
 				}
 
-				if (!panel.contains(event.target)) {
-					setElementVisibility(popup, false);
-					openButton.setAttribute('aria-expanded', 'false');
+				if (!popup.contains(event.target) && event.target !== openButton) {
+					setReopenPanelState(panel, false, false);
 				}
 			});
 
 			document.addEventListener('keydown', function (event) {
-				if ('Escape' !== event.key || popup.hasAttribute('hidden')) {
+				var focusable;
+				var first;
+				var last;
+
+				if (popup.hasAttribute('hidden')) {
 					return;
 				}
 
-				setElementVisibility(popup, false);
-				openButton.setAttribute('aria-expanded', 'false');
+				if ('Escape' === event.key) {
+					setReopenPanelState(panel, false, true);
+					return;
+				}
+
+				if ('Tab' !== event.key) {
+					return;
+				}
+
+				focusable = Array.prototype.slice.call(popup.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+				first = focusable[0];
+				last = focusable[focusable.length - 1];
+
+				if (!first || !last) {
+					return;
+				}
+
+				if (event.shiftKey && document.activeElement === first) {
+					event.preventDefault();
+					last.focus();
+				} else if (!event.shiftKey && document.activeElement === last) {
+					event.preventDefault();
+					first.focus();
+				}
 			});
 		});
 	}
 
-	function bindEngagementTracking() {
-		var trackingAllowed = typeof FeuerCookieData !== 'undefined'
-			&& !!FeuerCookieData.statisticsEnabled
-			&& !!FeuerCookieData.ajaxUrl
-			&& !!FeuerCookieData.statsNonce;
-		var startedAt;
-		var activeStartedAt;
-		var activeDuration = 0;
-		var sent = false;
-		var maxScrollDepth = 0;
+	function bindConsentDialogFocus() {
+		var banner = document.querySelector('[data-feuer-cookie-banner]');
+		var backdrop = document.querySelector('.feuer-cookie-backdrop');
+		var dialog;
+		var backgroundElements = [];
 
-		if (!trackingAllowed) {
+		if (!banner) {
 			return;
 		}
 
-		startedAt = Date.now();
-		activeStartedAt = document.hidden ? 0 : startedAt;
-
-		function updateScrollDepth() {
-			var scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-			var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-			var documentHeight = Math.max(
-				document.body ? document.body.scrollHeight : 0,
-				document.documentElement ? document.documentElement.scrollHeight : 0,
-				1
-			);
-			var depth = Math.round(((scrollTop + viewportHeight) / documentHeight) * 100);
-
-			maxScrollDepth = Math.max(maxScrollDepth, Math.min(depth, 100));
-		}
-
-		function pauseActiveTimer() {
-			if (!activeStartedAt) {
+		dialog = banner.querySelector('[role="dialog"]') || banner;
+		document.body.style.overflow = 'hidden';
+		document.documentElement.style.overflow = 'hidden';
+		Array.prototype.forEach.call(document.body.children, function (element) {
+			if (element === banner || element === backdrop) {
 				return;
 			}
 
-			activeDuration += Math.max(0, Date.now() - activeStartedAt);
-			activeStartedAt = 0;
-		}
-
-		function resumeActiveTimer() {
-			if (document.hidden || activeStartedAt) {
-				return;
-			}
-
-			activeStartedAt = Date.now();
-		}
-
-		function transmitEngagement(reason) {
-			var payload;
-			var body;
-			var durationSeconds;
-			var activeSeconds;
-
-			if (sent) {
-				return;
-			}
-
-			updateScrollDepth();
-			pauseActiveTimer();
-
-			durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-			activeSeconds = Math.min(durationSeconds, Math.max(0, Math.round(activeDuration / 1000)));
-
-			payload = new URLSearchParams();
-			payload.set('action', 'feuer_cookie_track_engagement');
-			payload.set('nonce', FeuerCookieData.statsNonce);
-			payload.set('current_url', window.location.href || FeuerCookieData.currentUrl || '/');
-			payload.set('page_title', document.title || '');
-			payload.set('referrer_url', document.referrer || '');
-			payload.set('duration', String(durationSeconds));
-			payload.set('active_duration', String(activeSeconds));
-			payload.set('scroll_depth', String(maxScrollDepth));
-			payload.set('screen_width', String(window.screen && window.screen.width ? window.screen.width : window.innerWidth || 0));
-			payload.set('screen_height', String(window.screen && window.screen.height ? window.screen.height : window.innerHeight || 0));
-			payload.set('viewport_width', String(window.innerWidth || 0));
-			payload.set('viewport_height', String(window.innerHeight || 0));
-			payload.set('pixel_ratio', String(window.devicePixelRatio || 1));
-			payload.set('reason', reason || 'pagehide');
-
-			sent = true;
-
-			if (navigator.sendBeacon) {
-				body = new Blob(
-					[payload.toString()],
-					{ type: 'application/x-www-form-urlencoded; charset=UTF-8' }
-				);
-				navigator.sendBeacon(FeuerCookieData.ajaxUrl, body);
-				return;
-			}
-
-			fetch(FeuerCookieData.ajaxUrl, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-				},
-				body: payload.toString(),
-				credentials: 'same-origin',
-				keepalive: true
-			}).catch(function () {
-				/* noop */
+			backgroundElements.push({
+				element: element,
+				inert: element.hasAttribute('inert'),
+				ariaHidden: element.hasAttribute('aria-hidden'),
+				ariaHiddenValue: element.getAttribute('aria-hidden')
 			});
-		}
+			element.setAttribute('inert', '');
+			element.setAttribute('aria-hidden', 'true');
+		});
 
-		window.addEventListener('scroll', updateScrollDepth, { passive: true });
-		document.addEventListener('visibilitychange', function () {
-			if (document.hidden) {
-				pauseActiveTimer();
+		window.setTimeout(function () {
+			var first = dialog.querySelector('[data-feuer-cookie-toggle-settings]') || dialog.querySelector('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+
+			if (first) {
+				first.focus();
+			}
+		}, 0);
+
+		document.addEventListener('keydown', function (event) {
+			var focusable;
+			var first;
+			var last;
+
+			if ('Tab' !== event.key) {
 				return;
 			}
 
-			resumeActiveTimer();
+			focusable = Array.prototype.slice.call(dialog.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+			first = focusable[0];
+			last = focusable[focusable.length - 1];
+
+			if (!dialog.contains(document.activeElement)) {
+				event.preventDefault();
+				if (first) {
+					first.focus();
+				}
+				return;
+			}
+
+			if (!first || !last) {
+				return;
+			}
+
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
 		});
-		window.addEventListener('focus', resumeActiveTimer);
-		window.addEventListener('blur', pauseActiveTimer);
+
 		window.addEventListener('pagehide', function () {
-			transmitEngagement('pagehide');
+			backgroundElements.forEach(function (state) {
+				if (!state.inert) {
+					state.element.removeAttribute('inert');
+				}
+
+				if (state.ariaHidden) {
+					state.element.setAttribute('aria-hidden', state.ariaHiddenValue);
+				} else {
+					state.element.removeAttribute('aria-hidden');
+				}
+			});
 		});
-		window.addEventListener('beforeunload', function () {
-			transmitEngagement('beforeunload');
-		});
-		updateScrollDepth();
 	}
 
 	function initializeFrontend() {
@@ -570,8 +592,7 @@
 		bindSettingsToggles();
 		bindAllowServiceButtons();
 		bindReopenPanel();
-		bindEngagementTracking();
-
+		bindConsentDialogFocus();
 		if (typeof FeuerCookieData !== 'undefined' && FeuerCookieData.consentRecord) {
 			syncLocalStorage(FeuerCookieData.consentRecord);
 		}

@@ -1,5 +1,236 @@
 # Feuer-Cookie Historie
 
+## Version 1.27.17 - 18.11.2026
+
+Plugin-Indexseite an den aktuellen Funktionsumfang und die datensparsame Statistik angepasst.
+
+### Enthalten
+
+- Statistikbeschreibung nennt die ausdrueckliche Freigabe als Voraussetzung
+- Unzutreffende Aussage zu IP-Rankings in der Besucherstatistik entfernt
+- Lokale Tageskennzahlen und Aufbewahrung der Statistikdaten ergaenzt
+- Rechtliche Werbeformulierung auf transparente Einwilligung angepasst
+
+
+## Version 1.27.16 - 18.11.2026
+
+Fehlende Tagesstatistik-Tabelle und Aktualisierung der Kennzahlen ergaenzt.
+
+### Enthalten
+
+- Datenbankschema fuer Tagesstatistiken wird bei Aktivierung und Upgrade angelegt
+- Erfolgreiche Ereignis- und Seitenaufruf-Eintraege aktualisieren Tageszaehler
+- Einwilligungen, Ablehnungen, blockierte Anfragen und eindeutige Besucher fliessen in Kennzahlen ein
+- Tagesaggregate werden entsprechend der Statistik-Aufbewahrungsfrist bereinigt
+
+
+## Version 1.27.15 - 18.11.2026
+
+Aufbewahrung und Datenminimierung in Consent- und Statistikprotokollen vervollstaendigt.
+
+### Enthalten
+
+- Consent-Audit-Aufbewahrung umfasst auch IP-Sperrereignisse
+- Statistik-Aufbewahrung umfasst Seitenaufrufe und Engagement-Ereignisse
+- Query-Parameter werden aus URLs in Consent- und Sicherheitsereignissen entfernt
+- Einstellungsbeschriftung und Datenschutzhinweise praezisiert
+
+
+
+## Version 1.27.14 - 18.11.2026
+
+IP- und Standort-Erkennung gegen nicht vertrauenswürdige Request-Header abgesichert.
+
+### Enthalten
+
+- Client-IP standardmaessig ausschliesslich aus REMOTE_ADDR
+- X-Forwarded-For nur bei explizit freigegebenen Proxy-IP-Adressen
+- Geo-Daten ausschliesslich aus serverseitig gesetzten GEOIP-Variablen
+- Dokumentation fuer Reverse-Proxy-Konfiguration und Datenverarbeitung aktualisiert
+
+
+
+## Version 1.27.13 - 18.11.2026
+
+Cookie-Sicherheit und Consent-Persistenz fuer HTTP-/HTTPS-Installationen korrigiert.
+
+### Enthalten
+
+- Secure-Attribut der Consent- und Sitzungs-Cookies an den HTTPS-Status von WordPress angepasst
+- Verhindert, dass Browser Consent-Cookies auf HTTP-Seiten stillschweigend verwerfen
+
+
+
+## Version 1.27.12 - 18.11.2026
+
+Fehlende Admin-Post-Handler fuer SEO-Audit und Ereignisexport angeschlossen.
+
+### Enthalten
+
+- SEO-Audit-Formular erreicht den geschuetzten Ausfuehrungshandler
+- CSV- und JSON-Export der Ereignisliste erreicht den geschuetzten Exporthandler
+- Vollstaendigen Admin-Audit um Handler-Routen-Abgleich erweitert
+
+
+
+## Version 1.27.11 - 18.11.2026
+
+Admin-Navigation und Tastaturbedienung des Dashboard-Widgets korrigiert.
+
+### Enthalten
+
+- Besucher- und SEO-Audit-Seiten im Feuer-Cookie-Menue registriert
+- Dashboard-Karten mit zugänglichen Tabs und Pfeiltasten-Navigation ausgestattet
+- WordPress-7.1.5-Kompatibilitaetspruefung dokumentiert; getestete Version wird erst nach Runtime-Matrix angehoben
+
+
+
+## Version 1.27.10 - 18.11.2026
+
+Verbesserung der Einstellungsansicht auf schmalen Mobilbildschirmen.
+
+### Enthalten
+
+- Kategorie-Schalter, Status und Detailaktionen werden mobil untereinander angeordnet
+- Größere Touchflächen für Kategorien und Dienst-Schalter
+- Detailaktionen füllen die verfügbare Breite der Einstellungskarte
+
+
+
+## Version 1.27.9 - 18.11.2026
+
+Abschirmung des Seitenhintergrunds für Tastatur- und Screenreader-Nutzung.
+
+### Enthalten
+
+- Hintergrundinhalte werden während der Erstentscheidung für assistive Technologien ausgeblendet und interaktiv gesperrt
+- Vorhandene aria-hidden- und inert-Zustände werden beim Seitenwechsel wiederhergestellt
+
+
+
+## Version 1.27.8 - 18.11.2026
+
+Sperrung der Seitenhintergrund-Interaktion während der Einwilligungsauswahl.
+
+### Enthalten
+
+- Seitenhintergrund lässt sich hinter dem Erstbesuchsfenster nicht mehr scrollen
+- Tastaturfokus bleibt im Dialog und wird bei Tab-Navigation wieder hineingeführt
+
+
+
+## Version 1.27.7 - 18.11.2026
+
+Sichtbares Abdunkeln der Website bis zur Entscheidung im Einwilligungsfenster.
+
+### Enthalten
+
+- Verdunkelung und leichte Weichzeichnung des Seiteninhalts bei allen Banner-Layouts
+- Hintergrund bleibt durch das Overlay bis zur Auswahl im Cookie-Dialog abgedeckt
+
+
+
+## Version 1.27.6 - 18.11.2026
+
+Überarbeitung der Cookie-Oberflächen passend zum Auftritt von wp.wdmin.com.
+
+### Enthalten
+
+- Erstbesuchsfenster und Einstellungsdialog mit dunkler Graphit- und Burgunderoptik sowie roten Akzenten
+- Aktionen, Schalter und Links mit klaren Kontrasten, konsistenten Zuständen und gut erreichbaren Klickflächen
+- Kompaktere Gruppenabstände im Einstellungsdialog
+- Floating-Button sichtbar und mit sicherem Abstand auf Mobilgeräten
+
+
+
+## Version 1.27.5 - 18.11.2026
+
+Erweiterung der Statistikberichte und des Datenexports.
+
+### Enthalten
+
+- Seitenaufrufe und Besucher-Sitzungen mit dem jeweils vorangehenden gleich langen Zeitraum vergleichbar
+- CSV-Export aggregierter Tages-, Seiten-, Herkunfts-, Geräte-, Browser- und Betriebssystemwerte
+- Export enthält keine Rohereignisse oder Sitzungskennungen und schützt Tabellenwerte vor CSV-Formelausführung
+- Beliebte Seiten zeigen neben Aufrufen auch die Zahl der pseudonymen Sitzungen
+
+## Version 1.27.4 - 18.11.2026
+
+Wiederherstellung einer klaren, einwilligungsbasierten Website-Statistik.
+
+### Enthalten
+
+- Eigener Statistik-Menüpunkt mit Aufrufen, pseudonymen 30-Minuten-Sitzungen, Tagesverlauf, Top-Seiten, Herkunftsdiensten, Geräten, Browsern und Betriebssystemen
+- Lokale Erfassung startet ausschließlich nach ausdrücklicher Freigabe von „Feuer-Cookie Statistik“ und endet sofort beim Widerruf
+- Statistikereignisse speichern weder IP-Adressen noch vollständige URLs, Query-Parameter oder rohe User-Agents
+- Zufällige Sitzungskennung wird nur nach Freigabe gesetzt, serverseitig gehasht und rotiert nach 30 Minuten Inaktivität
+- Aufbewahrungsfrist für Statistik-Rohdaten zwischen 30 und 365 Tagen konfigurierbar
+- Einwilligungstexte und Dokumentation erklären die lokale optionale Reichweitenmessung
+
+## Version 1.27.3 - 18.11.2026
+
+Präzisierung der Diensterkennung in der Diagnose und Consent-Auswahl.
+
+### Enthalten
+
+- Serverseitige HTTP- und cURL-Aufrufe werden als interne technische Hinweise gekennzeichnet und nicht in die Cookie-Auswahl für Besucher übernommen
+- Archiv-, Versions- und Snippet-Verzeichnisse werden bei der Quellcodeanalyse übersprungen
+- Cloudflare und cdnjs werden aus der Diensteliste und Diagnose entfernt
+- Google reCAPTCHA erhält eine eigene, verständliche Dienstzuordnung
+- Diagnose erklärt, dass eine statische Fundstelle keinen tatsächlichen Laufzeit-Request bestätigt
+
+## Version 1.27.2 - 12.11.2026
+
+Überarbeitung des ersten Consent-Fensters.
+
+### Enthalten
+
+- Initialer Tastaturfokus startet auf „Einstellungen“ statt auf dem Datenschutzerklärungs-Link
+- Revisionsnummer aus dem sichtbaren Banner entfernt
+- Warme, konsistente Farben und klarere Typografie für Banner, Links und Entscheidungsschaltflächen
+- Schaltflächen auf Mobilgeräten als gut erreichbare Vollbreiten-Aktionen mit mindestens 48 Pixel Höhe
+- Datenschutzerklärung korrekt ausgeschrieben
+
+## Version 1.27.1 - 12.11.2026
+
+Professionelles Consent-Fenster für die Einstellungen.
+
+### Enthalten
+
+- Einstellungen über das schwebende Cookie-Symbol als zentrierten Dialog mit abgedunkeltem Hintergrund
+- Kompaktere Kategorie- und Dienstkarten ohne übergroße Abstände durch Theme-Stile
+- Gut erreichbare Aktionsschaltflächen, interne Fenster-Scrollung und mobile Safe-Area-Abstände
+- Dialog schließt per Schließen-Schaltfläche, Escape oder Klick außerhalb; Tastaturfokus bleibt im Dialog
+- Release-Pakete schließen Entwicklungsquellen aus
+
+## Version 1.27.0 - 22.09.2026
+
+Integrations- und Update-Release.
+
+### Enthalten
+
+- Optionale Synchronisierung mit Feuer Analytics: Der Statistik-Dienst wird nur nach ausdrücklicher Aktivierung durch einen Administrator im Banner angeboten
+- Analytics erhält ausschließlich die aktuelle Freigabe für den Dienst, niemals Consent-Protokolle, IP-Adressen oder Besucherprofile
+- Gemeinsamer Betriebsstatus und Link zum Analytics-Bericht in der Cookie-Übersicht ergänzt
+- Update-Manifeste enthalten jetzt Paket-URL und SHA-256-Prüfsumme; Archive werden vor der Installation geprüft und ausschließlich von `https://wdmin.com` akzeptiert
+- Release-Generator veröffentlicht versionierte und `latest`-Manifeste mit prüfbaren ZIP-Archiven
+- Plugin-Metadaten und Release-Informationen auf Walter Färber und `wdmin.com` vereinheitlicht
+- Drei Feuer-Cookie-Bannerstile eigenständig benannt und gestaltet; bestehende Stilauswahl wird beim Update übernommen
+- Projekt- und Release-Texte auf die eigene Produktbezeichnung und Urheberangabe vereinheitlicht
+
+## Version 1.26.0 - 19.09.2026
+
+Cookie-Only- und Kompatibilitaets-Release.
+
+### Enthalten
+
+- Lokale Besuchsanalyse vollständig deaktiviert: keine Seitenaufrufe, Verweildauer, Scrolltiefe, Geräte-, Bildschirm-, Standort- oder Referrer-Erfassung mehr
+- Bestehende aggregierte Besuchsstatistik und frühere Nicht-Consent-Ereignisse werden beim Upgrade entfernt; der datensparsame Consent-Nachweis bleibt erhalten
+- Besucherbereich und SEO-Audit aus der Navigation entfernt; Übersicht und Status zeigen nur noch Cookie- und Consent-Funktionen
+- Consent-Protokolle enthalten keine Browser-, Geräte-, Standort- oder Referrer-Daten mehr und speichern IP-Adressen ausschließlich maskiert
+- Zugänglicher Fokus-Fang im initialen Consent-Dialog ergänzt; Opt-in, Widerruf, Re-Consent, Bot-Ausnahme, Dienst-Blocking und GTM Consent Mode v2 bleiben erhalten
+- Plugin-Version auf `1.26.0` erhöht
+
 ## Version 1.25.1 - 11.09.2026
 
 Mobile Consent-Fix.
@@ -56,7 +287,7 @@ Admin-Design- und Download-Schutz-Update.
 
 ## Version 1.24.0 - 30.06.2026
 
-OpenSEO-inspiriertes SEO-Audit-Update fuer lokale Inhaltsoptimierung.
+SEO-Audit-Update fuer lokale Inhaltsoptimierung.
 
 ### Enthalten
 
@@ -165,13 +396,13 @@ Release- und Analyse-Update fuer GitHub, wdmin.com und den wiedereroeffnenden Co
 
 ### Enthalten
 
-- Plugin-Metadaten auf Walter Faerber und `wdmin.com/plugins/feuer-cookie/` umgestellt
-- Developer-hosted Update-Mechanismus ueber `release/latest/update.json` und WordPress-Updater integriert
+- Plugin-Metadaten auf Walter Färber und `wdmin.com/plugins/feuer-cookie/` umgestellt
+- Eigenständigen Update-Mechanismus über `release/latest/update.json` und WordPress-Updater integriert
 - Neues Build-Skript fuer Release-Pakete, Projektmetriken, Checksummen und Latest-Kanal ergaenzt
 - Frontend-Analytics um durchschnittliche aktive Aufenthaltszeit pro Seite erweitert
 - Neue Dashboard-Charts fuer IP-Rankings und aktive Aufenthaltszeit ergaenzt
 - Floating Cookie-Button jetzt mit waehlbaren Formen, Farben und Icons
-- Developer-Landing-`index.php` mit Projektbeschreibung und Live-Metriken ergaenzt
+- Projektseite `index.php` mit Projektbeschreibung und Live-Metriken ergänzt
 
 ## Version 1.20 - 05.04.2026
 

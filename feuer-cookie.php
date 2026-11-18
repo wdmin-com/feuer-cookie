@@ -2,10 +2,11 @@
 /**
  * Plugin Name: Feuer-Cookie
  * Plugin URI: https://wdmin.com/plugins/feuer-cookie/
- * Description: Konfigurierbarer Consent-Banner mit Dienst-Blocking, lokaler Diagnose, Besucherstatistik und IP-Schutz fuer WordPress.
- * Version: 1.25.1
- * Author: Walter Faerber
+ * Description: Konfigurierbarer Cookie-Consent-Banner mit Dienst-Blocking, Diagnose und Datenschutzfunktionen fuer WordPress.
+ * Version: 1.27.17
+ * Author: Walter Färber
  * Author URI: https://wdmin.com
+ * Copyright: 2026 Walter Färber, wdmin.com
  * Update URI: https://wdmin.com/plugins/feuer-cookie/
  * Text Domain: feuer-cookie
  * Requires at least: 6.9
@@ -16,7 +17,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('FEUER_COOKIE_VERSION', '1.25.1');
+define('FEUER_COOKIE_VERSION', '1.27.17');
 define('FEUER_COOKIE_MIN_WP_VERSION', '6.9');
 define('FEUER_COOKIE_MIN_PHP_VERSION', '8.0');
 define('FEUER_COOKIE_FILE', __FILE__);
@@ -29,7 +30,6 @@ define('FEUER_COOKIE_UPDATE_MANIFEST_URL', FEUER_COOKIE_HOME_URL . 'release/late
 define('FEUER_COOKIE_UPDATE_CACHE_KEY', 'feuer_cookie_update_manifest');
 
 require_once FEUER_COOKIE_PATH . 'includes/class-feuer-cookie-diagnostics.php';
-require_once FEUER_COOKIE_PATH . 'includes/class-feuer-cookie-seo-audit.php';
 require_once FEUER_COOKIE_PATH . 'includes/class-feuer-cookie-plugin.php';
 require_once FEUER_COOKIE_PATH . 'includes/class-feuer-cookie-updater.php';
 
@@ -94,6 +94,19 @@ if (! function_exists('ff_cookie_has_consent')) {
 	 */
 	function ff_cookie_has_consent($service_id) {
 		return Feuer_Cookie_Plugin::instance()->has_service_consent((string) $service_id);
+	}
+}
+
+if (! function_exists('feuer_cookie_get_consent_report')) {
+	/**
+	 * Return aggregated consent metrics without exposing visitor-level data.
+	 *
+	 * @param string $service_id Service identifier.
+	 * @param int    $days       Number of completed/current days to include.
+	 * @return array<string,int|string|bool>
+	 */
+	function feuer_cookie_get_consent_report($service_id, $days = 30) {
+		return Feuer_Cookie_Plugin::instance()->get_consent_report((string) $service_id, (int) $days);
 	}
 }
 
