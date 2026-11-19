@@ -1,5 +1,16 @@
 # Feuer-Cookie Historie
 
+## Version 1.27.18 - 19.11.2026
+
+Proprietaere Lizenz fuer Feuer-Cookie dokumentiert.
+
+### Enthalten
+
+- Lizenzstatus im WordPress-Pluginheader ausgewiesen
+- Proprietary License mit persoenlicher Genehmigungspflicht als LICENSE.md aufgenommen
+- README verlinkt Lizenzbedingungen und stellt klar, dass GitHub-Publikation keine Nutzungserlaubnis erteilt
+
+
 ## Version 1.27.17 - 18.11.2026
 
 Plugin-Indexseite an den aktuellen Funktionsumfang und die datensparsame Statistik angepasst.

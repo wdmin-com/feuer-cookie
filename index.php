@@ -317,7 +317,7 @@ header('Content-Type: text/html; charset=utf-8');
 
 		<section class="feuer-cookie-panel">
 			<h2>Autor und Betrieb</h2>
-			<p>Feuer-Cookie wird von Walter Faerber entwickelt und ueber <a href="https://wdmin.com">wdmin.com</a> bereitgestellt. Oeffentlich abrufbar bleiben die Plugin-Beschreibung und die Entwicklerseite; direkte Download-Links fuer Plugin-Pakete werden nicht auf dieser Seite angeboten.</p>
+			<p>Feuer-Cookie wird von Walter Faerber entwickelt und ueber <a href="https://wdmin.com">wdmin.com</a> bereitgestellt. Die Software ist proprietaer; Installation und Nutzung sind nur mit ausdruecklicher persoenlicher Genehmigung erlaubt. Die Veroeffentlichung auf GitHub oder der Download eines ZIP-Archivs erteilen keine Nutzungserlaubnis. <a href="LICENSE.md">Vollstaendige Lizenzbedingungen</a>.</p>
 			<div class="feuer-cookie-footer">
 				<p><strong>Autor:</strong> <a href="https://wdmin.com">Walter Faerber / wdmin.com</a></p>
 				<p><strong>Mindestanforderungen:</strong> WordPress 6.9, PHP 8.0</p>

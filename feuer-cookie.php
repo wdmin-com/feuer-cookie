@@ -3,9 +3,10 @@
  * Plugin Name: Feuer-Cookie
  * Plugin URI: https://wdmin.com/plugins/feuer-cookie/
  * Description: Konfigurierbarer Cookie-Consent-Banner mit Dienst-Blocking, Diagnose und Datenschutzfunktionen fuer WordPress.
- * Version: 1.27.17
+ * Version: 1.27.18
  * Author: Walter Färber
  * Author URI: https://wdmin.com
+ * License: Proprietary - personal permission required
  * Copyright: 2026 Walter Färber, wdmin.com
  * Update URI: https://wdmin.com/plugins/feuer-cookie/
  * Text Domain: feuer-cookie
@@ -17,7 +18,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('FEUER_COOKIE_VERSION', '1.27.17');
+define('FEUER_COOKIE_VERSION', '1.27.18');
 define('FEUER_COOKIE_MIN_WP_VERSION', '6.9');
 define('FEUER_COOKIE_MIN_PHP_VERSION', '8.0');
 define('FEUER_COOKIE_FILE', __FILE__);

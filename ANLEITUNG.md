@@ -1,4 +1,6 @@
-﻿# Feuer-Cookie
+# Feuer-Cookie
+
+> **Lizenz:** proprietaere Software. Nutzung und Installation sind nur mit ausdruecklicher persoenlicher Genehmigung von Walter Faerber erlaubt. Repository-Zugriff oder Download erteilen keine Nutzungserlaubnis. Siehe [LICENSE.md](LICENSE.md).
 
 > **Hinweis für Version 1.27.5:** Lokale Reichweitenmessung ist optional und beginnt ausschließlich nach ausdrücklicher Freigabe von „Feuer-Cookie Statistik“. Ohne diese Freigabe werden keine Seitenaufrufe erfasst.
 

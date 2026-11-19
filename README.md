@@ -1,4 +1,6 @@
 # feuer-cookie
+
+**Lizenz:** proprietaer; Nutzung nur mit ausdruecklicher persoenlicher Genehmigung des Entwicklers. Die Veroeffentlichung auf GitHub oder der Download eines ZIP-Archivs erteilen keine Nutzungserlaubnis. Vollstaendige Bedingungen: [LICENSE.md](LICENSE.md).
 Feuer-Cookie ist ein professionelles WordPress-Plugin fuer deutschsprachige Websites, die Cookie-Einwilligungen, externe Inhalte und eine einwilligungsbasierte Reichweitenmessung transparent verwalten wollen. Lokale Statistik startet nur nach ausdrücklicher Freigabe von „Feuer-Cookie Statistik“.
 
 ## Datenschutz und Google Tag Manager

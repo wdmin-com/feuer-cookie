@@ -295,8 +295,8 @@ function New-Manifest {
         package_hash = $PackageHash
         package_hash_algorithm = 'sha256'
         sections = [ordered]@{
-            description = '<p>Feuer-Cookie is a WordPress consent and privacy plugin with service-based blocking, diagnostics and a verified update channel.</p><ul><li>Granular consent by category and service</li><li>Opt-in consent records without visitor analytics</li><li>Google Consent Mode v2 support</li><li>Optional consent bridge for Feuer Analytics</li><li>Release delivery from wdmin.com with SHA-256 verification</li></ul>'
-            installation = '<ol><li>Upload the plugin folder to <code>wp-content/plugins/feuer-cookie/</code>.</li><li>Activate the plugin in WordPress.</li><li>Run the diagnostics once and review detected services.</li><li>Set privacy, imprint and support links in the plugin settings.</li><li>Build and publish the signed release package to wdmin.com.</li></ol>'
+            description = '<p>Feuer-Cookie is proprietary WordPress consent and privacy software with service-based blocking, diagnostics and a verified update channel. Use and installation require explicit personal permission from the developer. Repository access or downloading a ZIP does not grant permission.</p><ul><li>Granular consent by category and service</li><li>Opt-in consent records without visitor analytics</li><li>Google Consent Mode v2 support</li><li>Optional consent bridge for Feuer Analytics</li><li>Release delivery from wdmin.com with SHA-256 verification</li></ul><p>See the included <code>LICENSE.md</code> for full terms.</p>'
+            installation = '<p>Installation and use are permitted only for users who have received explicit personal permission from the developer. A repository clone or ZIP download is not permission.</p><ol><li>For authorized use only, upload the plugin folder to <code>wp-content/plugins/feuer-cookie/</code>.</li><li>Activate the plugin in WordPress.</li><li>Run the diagnostics once and review detected services.</li><li>Set privacy, imprint and support links in the plugin settings.</li></ol>'
             changelog = $ChangelogHtml
         }
     }
