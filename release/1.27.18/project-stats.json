@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-11-19 12:03:25",
+  "files": 67,
+  "directories": 23,
+  "lines": 44381,
+  "non_empty_lines": 38408,
+  "characters": 2657907,
+  "bytes": 2696858,
+  "by_extension": {
+    "json": 2,
+    "gitignore": 1,
+    "css": 8,
+    "js": 9,
+    "md": 15,
+    "php": 27,
+    "geojson": 1,
+    "ps1": 4
+  },
+  "version": "1.27.18",
+  "release_base_url": "https://wdmin.com/plugins/feuer-cookie/"
+}
